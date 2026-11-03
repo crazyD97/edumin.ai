@@ -1,0 +1,37 @@
+# Local or single-server deployment.
+#   docker compose up -d db              # just PostgreSQL for development (port 5433)
+#   docker compose up -d --build         # full stack on http://localhost:4000
+services:
+  db:
+    image: postgres:17-alpine
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: edumin
+    ports:
+      - '5433:5432'
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ['CMD-SHELL', 'pg_isready -U postgres']
+      interval: 5s
+      retries: 10
+
+  app:
+    build: .
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      DATABASE_URL: postgres://postgres:postgres@db:5432/edumin
+      JWT_SECRET: ${JWT_SECRET:?set JWT_SECRET to a long random string}
+      APP_URL: ${APP_URL:-http://localhost:4000}
+      ROOT_DOMAIN: ${ROOT_DOMAIN:-edumin.localhost}
+    ports:
+      - '4000:4000'
+    volumes:
+      - uploads:/data
+
+volumes:
+  pgdata:
+  uploads:

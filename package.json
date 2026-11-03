@@ -1,0 +1,26 @@
+{
+  "name": "edumin",
+  "private": true,
+  "version": "0.1.0",
+  "workspaces": [
+    "packages/*",
+    "apps/*"
+  ],
+  "scripts": {
+    "db:start": "node scripts/localdb.mjs start",
+    "db:stop": "node scripts/localdb.mjs stop",
+    "db:generate": "npm run generate -w @edumin/api",
+    "db:migrate": "npm run migrate -w @edumin/api",
+    "db:seed": "npm run seed -w @edumin/api",
+    "dev": "concurrently -n api,web -c blue,magenta \"npm run dev -w @edumin/api\" \"npm run dev -w @edumin/web\"",
+    "build": "npm run build -w @edumin/shared && npm run build -w @edumin/api && npm run build -w @edumin/web",
+    "test": "npm run test -w @edumin/api",
+    "typecheck": "npm run typecheck --workspaces --if-present"
+  },
+  "devDependencies": {
+    "@types/node": "^26.6.6",
+    "concurrently": "^10.0.6",
+    "tsx": "^4.23.15",
+    "typescript": "^5.9.3"
+  }
+}
