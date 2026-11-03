@@ -1,0 +1,1 @@
+# edumin.ai
