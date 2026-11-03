@@ -1,6 +1,6 @@
 import { lazy, Suspense, type ReactNode } from 'react';
 import { Navigate, Route, Routes, useLocation } from 'react-router';
-import { useAuth } from './lib/auth';
+import { wasSignedOut, useAuth } from './lib/auth';
 import { Loading } from './components/ui';
 import { AppShell } from './layout/AppShell';
 import { LoginPage } from './pages/auth/LoginPage';
@@ -40,7 +40,7 @@ function RequireAuth({ children }: { children: ReactNode }) {
   const { user, loading } = useAuth();
   const loc = useLocation();
   if (loading) return <Loading className="h-screen" />;
-  if (!user) return <Navigate to={`/login?next=${encodeURIComponent(loc.pathname + loc.search)}`} replace />;
+  if (!user) return <Navigate to={wasSignedOut() ? '/login' : `/login?next=${encodeURIComponent(loc.pathname + loc.search)}`} replace />;
   return <>{children}</>;
 }
 

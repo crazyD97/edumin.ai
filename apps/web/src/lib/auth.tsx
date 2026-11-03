@@ -28,6 +28,10 @@ interface AuthValue {
 
 const Ctx = createContext<AuthValue | null>(null);
 
+/** Set on an explicit sign-out so the login redirect doesn't carry the old page as ?next. */
+let signedOut = false;
+export const wasSignedOut = () => signedOut;
+
 export function AuthProvider({ children }: { children: ReactNode }) {
   const qc = useQueryClient();
   const me = useQuery({
@@ -37,6 +41,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     retry: false,
   });
   const user = me.data ?? null;
+  if (user) signedOut = false; // a new session supersedes the sign-out
   const school = useQuery({ queryKey: ['school'], queryFn: () => get<SchoolProfile>('/school'), enabled: !!user?.school, staleTime: 10 * 60_000 });
 
   useEffect(() => {
@@ -63,8 +68,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     hasFeature: (f) => features.has(f),
     logout: async () => {
       await post('/auth/logout').catch(() => {});
-      qc.clear();
+      signedOut = true;
+      // Update the live session entry (clear() would orphan its observer and keep the old user),
+      // then drop everything else cached for the previous account.
       qc.setQueryData(['me'], null);
+      qc.removeQueries({ predicate: (q) => q.queryKey[0] !== 'me' });
+      applyBranding(null);
     },
     refresh: async () => {
       await qc.invalidateQueries({ queryKey: ['me'] });

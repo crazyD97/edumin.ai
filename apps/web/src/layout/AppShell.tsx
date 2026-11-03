@@ -285,8 +285,7 @@ export function AppShell() {
                 icon={<LogOut className="size-4" />}
                 onClick={async () => {
                   close();
-                  await logout();
-                  navigate('/login');
+                  await logout(); // RequireAuth then redirects to /login
                 }}
               >
                 Sign out
