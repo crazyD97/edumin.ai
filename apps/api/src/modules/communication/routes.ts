@@ -90,7 +90,7 @@ export async function createAnnouncement(ctx: Ctx, v: z.infer<typeof announcemen
   }
   const [row] = await ctx.db.insert(announcements).values({ ...v, schoolId: ctx.schoolId, createdBy: ctx.userId }).returning();
   const recipients = (await recipientsFor(ctx, v)).filter((id) => id !== ctx.userId);
-  await notifyUsers(ctx.db, ctx.schoolId, recipients, { type: `announcement_${v.category}`, title: v.title, body: v.body.slice(0, 280), link: `/announcements?id=${row.id}`, email: v.sendEmail });
+  await notifyUsers(ctx.db, ctx.schoolId, recipients, { type: `announcement_${v.category}`, title: v.title, body: v.body.slice(0, 280), link: `/announcements?id=${row.id}`, deliver: v.sendEmail ? { event: 'announcement', vars: { title: v.title, message: v.body.slice(0, 600) } } : undefined, createdBy: ctx.userId });
   await audit(ctx, 'create', 'announcement', row.id, { recipients: recipients.length });
   return { ...row, recipients: recipients.length };
 }

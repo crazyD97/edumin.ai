@@ -13,4 +13,5 @@ export function applyBranding(b: BrandInput | null) {
   const link = document.getElementById('favicon') as HTMLLinkElement | null;
   if (link) link.href = br?.faviconUrl || br?.logoUrl || '/favicon.svg';
   document.title = b?.name ? `${b.name} · Edumin` : 'Edumin — School Management';
+  document.querySelector('meta[name="theme-color"]')?.setAttribute('content', br?.primaryColor || '#4f46e5');
 }

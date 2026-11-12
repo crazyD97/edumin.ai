@@ -1,6 +1,6 @@
 import { Link } from 'react-router';
 import { useQuery } from '@tanstack/react-query';
-import { Building2, GraduationCap, IndianRupee, Timer, Users } from 'lucide-react';
+import { Building2, Coins, GraduationCap, IndianRupee, MessageCircle, Timer, Users } from 'lucide-react';
 import { get } from '@/lib/api';
 import { ago, money, num } from '@/lib/format';
 import { Card, EmptyState, ErrorState, LinkButton, Loading, PageHeader, Stat } from '@/components/ui';
@@ -19,6 +19,12 @@ export function PlatformHomePage() {
         <Stat label="Monthly recurring revenue" value={money(d.mrr, { compact: true })} sub="Active schools × plan price" icon={<IndianRupee className="size-5" />} tone="green" />
         <Stat label="Active students" value={num(d.activeStudents)} icon={<GraduationCap className="size-5" />} tone="violet" />
         <Stat label="User accounts" value={num(d.users)} icon={<Users className="size-5" />} tone="blue" />
+      </div>
+      <div className="mb-6 grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
+        <Stat label="Credit sales this month" value={money(d.creditsThisMonth.revenue)} sub={`${num(d.creditsThisMonth.sold)} credits sold`} icon={<Coins className="size-5" />} tone="green" />
+        {['whatsapp', 'sms', 'email'].map((c) => (
+          <Stat key={c} label={`${c === 'sms' ? 'SMS' : c === 'email' ? 'Emails' : 'WhatsApp'} sent this month`} value={num(d.messagesThisMonth.find((m: any) => m.channel === c)?.n ?? 0)} icon={<MessageCircle className="size-5" />} tone={c === 'whatsapp' ? 'green' : c === 'sms' ? 'violet' : 'blue'} />
+        ))}
       </div>
       <div className="grid gap-6 xl:grid-cols-3">
         <Card title="New schools" subtitle="Last 12 months" className="xl:col-span-2">

@@ -6,7 +6,7 @@
  * same way from its own session. Business logic never reads the request.
  */
 import { and, eq, inArray } from 'drizzle-orm';
-import type { DataScope, FeatureKey, Permission } from '@edumin/shared';
+import { ALL_FEATURES, ALL_PERMISSIONS, type DataScope, type FeatureKey, type Permission } from '@edumin/shared';
 import { db as rootDb, type Executor } from './db';
 import { academicYears, enrollments, guardians, sectionSubjects, sections, studentGuardians, students, timetableEntries } from '../db/schema';
 import { forbidden } from './errors';
@@ -153,3 +153,18 @@ export async function assertCanTeachSection(ctx: Ctx, sectionId: string) {
   if (!ids.includes(sectionId)) throw forbidden('You are not assigned to this class section');
 }
 
+
+/**
+ * Context for background work done on a school's behalf (delivery jobs,
+ * rendering attachments). Never built from a request.
+ */
+export function systemCtx(schoolId: string): Ctx {
+  return createCtx({
+    userId: '00000000-0000-0000-0000-000000000000',
+    schoolId,
+    roleKey: 'system',
+    scope: 'school',
+    permissions: new Set(ALL_PERMISSIONS),
+    features: new Set(ALL_FEATURES),
+  });
+}

@@ -21,7 +21,7 @@ export interface ReportResult {
 
 export interface SessionUser {
   id: string;
-  email: string;
+  email: string | null;
   fullName: string;
   avatarUrl: string | null;
   role: { key: string; name: string; scope: string };

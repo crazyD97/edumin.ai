@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { useNavigate } from 'react-router';
+import { useNavigate, useSearchParams } from 'react-router';
 import { keepPreviousData, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Download, FileSpreadsheet, GraduationCap, Plus, Upload, ArrowUpRight } from 'lucide-react';
 import { STUDENT_STATUSES } from '@edumin/shared';
@@ -17,7 +17,8 @@ export function StudentsPage() {
   const [search, setSearch] = useState('');
   const [filters, setFilters] = useState({ classId: '', sectionId: '', status: 'active', gender: '', academicYearId: '' });
   const [page, setPage] = useState(1);
-  const [creating, setCreating] = useState(false);
+  const [urlParams, setUrlParams] = useSearchParams();
+  const [creating, setCreating] = useState(urlParams.get('new') === '1');
   const [importing, setImporting] = useState(false);
   const q = useDebounced(search);
   const years = useYears();
@@ -158,7 +159,7 @@ export function StudentsPage() {
           }
         />
       </Card>
-      <StudentFormModal open={creating} onClose={() => setCreating(false)} onSaved={(id) => navigate(`/students/${id}`)} />
+      <StudentFormModal open={creating} onClose={() => (setCreating(false), urlParams.has('new') && setUrlParams({}))} onSaved={(id) => navigate(`/students/${id}`)} />
       <ImportModal open={importing} onClose={() => setImporting(false)} />
     </>
   );

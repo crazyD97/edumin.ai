@@ -26,6 +26,7 @@ const Homework = page(() => import('./pages/homework/HomeworkPage'), 'HomeworkPa
 const HomeworkDetail = page(() => import('./pages/homework/HomeworkDetail'), 'HomeworkDetailPage');
 const Announcements = page(() => import('./pages/communication/AnnouncementsPage'), 'AnnouncementsPage');
 const Notifications = page(() => import('./pages/communication/NotificationsPage'), 'NotificationsPage');
+const Messaging = page(() => import('./pages/messaging/MessagingPage'), 'MessagingPage');
 const Meetings = page(() => import('./pages/meetings/MeetingsPage'), 'MeetingsPage');
 const Calendar = page(() => import('./pages/calendar/CalendarPage'), 'CalendarPage');
 const Reports = page(() => import('./pages/reports/ReportsPage'), 'ReportsPage');
@@ -34,6 +35,10 @@ const PlatformHome = page(() => import('./pages/platform/PlatformHome'), 'Platfo
 const PlatformSchools = page(() => import('./pages/platform/SchoolsPage'), 'SchoolsPage');
 const PlatformSchool = page(() => import('./pages/platform/SchoolDetail'), 'SchoolDetailPage');
 const PlatformPlans = page(() => import('./pages/platform/PlansPage'), 'PlansPage');
+const Verify = page(() => import('./pages/public/VerifyPage'), 'VerifyPage');
+const Certificates = page(() => import('./pages/certificates/CertificatesPage'), 'CertificatesPage');
+const Setup = page(() => import('./pages/setup/SetupPage'), 'SetupPage');
+const Pay = page(() => import('./pages/public/PayPage'), 'PayPage');
 const Apply = page(() => import('./pages/public/ApplyPage'), 'ApplyPage');
 
 function RequireAuth({ children }: { children: ReactNode }) {
@@ -52,6 +57,8 @@ export function App() {
       <Routes>
         <Route path="/login" element={<LoginPage />} />
         <Route path="/apply/:slug?" element={<Apply />} />
+        <Route path="/pay/:studentId" element={<Pay />} />
+        <Route path="/verify/:kind/:id" element={<Verify />} />
         <Route
           element={
             <RequireAuth>
@@ -90,6 +97,9 @@ export function App() {
               <Route path="announcements" element={<Announcements />} />
               <Route path="notifications" element={<Notifications />} />
               <Route path="meetings" element={<Meetings />} />
+              <Route path="messaging" element={<Messaging />} />
+              <Route path="certificates" element={<Certificates />} />
+              <Route path="setup" element={<Setup />} />
               <Route path="calendar" element={<Calendar />} />
               <Route path="reports" element={<Reports />} />
               <Route path="settings" element={<Settings />} />

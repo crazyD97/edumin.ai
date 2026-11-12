@@ -9,6 +9,7 @@ import { badRequest, must } from '../../core/errors';
 import { nextNumber } from '../../core/sequence';
 import { audit } from '../../core/audit';
 import { audience, notifyUsers } from '../../core/notify';
+import { dispatch } from '../messaging/service';
 import { createStudent } from '../students/service';
 
 const opt = z.string().trim().max(500).nullish();
@@ -74,6 +75,10 @@ export async function submitApplication(db: Executor, schoolId: string, input: z
     .insert(admissionApplications)
     .values({ ...input, schoolId, applicationNo, academicYearId: year?.id ?? null })
     .returning();
+  await dispatch(db, schoolId, {
+    event: 'admission',
+    items: [{ recipient: { name: input.guardian.name, phone: input.guardian.phone, email: input.guardian.email }, vars: { student: `${input.student.firstName} ${input.student.lastName ?? ''}`.trim(), status: 'received — we will contact you soon', ref: applicationNo } }],
+  });
   if (input.enquiryId) {
     await db.update(admissionEnquiries).set({ status: 'converted' }).where(and(eq(admissionEnquiries.id, input.enquiryId), eq(admissionEnquiries.schoolId, schoolId)));
   }
@@ -172,6 +177,13 @@ export async function reviewApplication(ctx: Ctx, id: string, body: { status: 'u
     .where(eq(admissionApplications.id, id))
     .returning();
   await audit(ctx, `application_${body.status}`, 'application', id);
+  if (body.status !== 'under_review') {
+    await dispatch(ctx.db, ctx.schoolId, {
+      event: 'admission',
+      createdBy: ctx.userId,
+      items: [{ recipient: { name: app.guardian.name, phone: app.guardian.phone, email: app.guardian.email }, vars: { student: `${app.student.firstName} ${app.student.lastName ?? ''}`.trim(), status: body.status === 'approved' ? 'approved — please visit the school to complete admission' : 'not approved this time', ref: app.applicationNo } }],
+    });
+  }
   return row;
 }
 

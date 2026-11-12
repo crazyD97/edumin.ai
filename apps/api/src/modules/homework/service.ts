@@ -4,7 +4,7 @@ import { and, asc, desc, eq, gte, inArray, lte, sql } from 'drizzle-orm';
 import { assignments, classes, enrollments, files, sections, students, subjects, submissions, users } from '../../db/schema';
 import { assertCanTeachSection, assertStudentAccess, ownStudentIds, requirePermission, scopedSectionIds, type Ctx } from '../../core/context';
 import { badRequest, forbidden, must } from '../../core/errors';
-import { audience, notifyUsers } from '../../core/notify';
+import { audience, notifyFamilies, notifyUsers } from '../../core/notify';
 import { getSection } from '../academics/routes';
 
 export const assignmentInput = z.object({
@@ -94,11 +94,14 @@ export async function createAssignment(ctx: Ctx, v: z.infer<typeof assignmentInp
   if (v.subjectId) must((await ctx.db.select({ id: subjects.id }).from(subjects).where(and(eq(subjects.id, v.subjectId), eq(subjects.schoolId, ctx.schoolId))))[0], 'Subject');
   const [row] = await ctx.db.insert(assignments).values({ ...v, schoolId: ctx.schoolId, teacherId: ctx.userId }).returning();
   const studs = (await ctx.db.select({ id: enrollments.studentId }).from(enrollments).where(and(eq(enrollments.sectionId, sec.id), eq(enrollments.status, 'active')))).map((r) => r.id);
-  await notifyUsers(ctx.db, ctx.schoolId, await audience.forStudents(ctx.db, ctx.schoolId, studs), {
+  await notifyFamilies(ctx.db, ctx.schoolId, studs, {
     type: 'homework',
     title: `New homework: ${v.title}`,
     body: `Due ${v.dueDate}`,
     link: `/homework/${row.id}`,
+    event: 'homework',
+    vars: { title: v.title, due: new Date(v.dueDate + 'T00:00:00').toLocaleDateString('en-IN', { day: 'numeric', month: 'short' }) },
+    createdBy: ctx.userId,
   });
   return row;
 }

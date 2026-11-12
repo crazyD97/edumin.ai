@@ -4,6 +4,7 @@ import type { SessionUser } from '@edumin/shared';
 import { ApiError, get, post } from './api';
 import { applyBranding } from './branding';
 import { setCurrency } from './format';
+import { clearUserCache, setManifestSchool } from './pwa';
 
 export interface SchoolProfile {
   id: string;
@@ -47,6 +48,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     if (school.data) {
       applyBranding(school.data);
+      setManifestSchool(school.data.slug);
       setCurrency(school.data.settings?.currency);
     } else if (user && !user.school) applyBranding({ name: 'Platform' });
   }, [school.data, user]);
@@ -74,6 +76,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       qc.setQueryData(['me'], null);
       qc.removeQueries({ predicate: (q) => q.queryKey[0] !== 'me' });
       applyBranding(null);
+      clearUserCache();
     },
     refresh: async () => {
       await qc.invalidateQueries({ queryKey: ['me'] });

@@ -126,11 +126,32 @@ function PerformanceCard({ p, title = 'Academic performance' }: { p: any; title?
   );
 }
 
+function SetupBanner() {
+  const { can } = useAuth();
+  const q = useQuery({ queryKey: ['setup'], queryFn: () => get<any>('/setup/status'), enabled: can('settings.edit') });
+  if (!q.data || q.data.ready) return null;
+  return (
+    <Link to="/setup" className="flex flex-col gap-3 rounded-xl border border-brand-200 bg-brand-50 p-4 transition hover:border-brand sm:flex-row sm:items-center">
+      <div className="flex-1">
+        <p className="font-semibold text-slate-900">Finish setting up your school</p>
+        <p className="text-sm text-slate-600">
+          {q.data.completed} of {q.data.total} steps done — next: {q.data.items.find((i: any) => !i.done && !i.optional)?.label}
+        </p>
+        <div className="mt-2 max-w-sm">
+          <ProgressBar value={(q.data.completed / q.data.total) * 100} />
+        </div>
+      </div>
+      <span className="text-sm font-medium text-brand-700">Continue setup →</span>
+    </Link>
+  );
+}
+
 function AdminDashboard({ d }: { d: any }) {
   const { hasFeature } = useAuth();
   const a = d.attendanceToday;
   return (
     <div className="space-y-6">
+      <SetupBanner />
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
         <Stat label="Active students" value={num(d.totals.students)} sub={`${d.totals.male} boys · ${d.totals.female} girls`} icon={<GraduationCap className="size-5" />} to="/students" />
         <Stat label="Teachers" value={num(d.totals.teachers)} sub={`${d.totals.sections} class sections`} icon={<Users className="size-5" />} tone="violet" to="/staff" />

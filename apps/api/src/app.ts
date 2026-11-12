@@ -31,6 +31,13 @@ import { meetingRoutes } from './modules/meetings/routes';
 import { eventRoutes } from './modules/events/routes';
 import { reportRoutes } from './modules/reports/routes';
 import { dashboardRoutes } from './modules/dashboard/routes';
+import { messagingPublicRoutes, messagingRoutes } from './modules/messaging/routes';
+import { feePublicRoutes, feeWebhookRoutes } from './modules/fees/public';
+import { integrationRoutes } from './modules/integrations/routes';
+import { certificateRoutes, verifyRoutes } from './modules/certificates/routes';
+import { setupRoutes } from './modules/setup/routes';
+import { searchRoutes } from './modules/search/routes';
+import { pushRoutes } from './modules/push/routes';
 
 /** Feature modules, mounted under /api. Order is irrelevant. */
 const modules = [authRoutes, publicRoutes, platformRoutes, settingsRoutes, userRoutes, fileRoutes, academicRoutes, studentRoutes, admissionRoutes, attendanceRoutes,
@@ -43,6 +50,16 @@ const modules = [authRoutes, publicRoutes, platformRoutes, settingsRoutes, userR
   eventRoutes,
   reportRoutes,
   dashboardRoutes,
+  messagingRoutes,
+  messagingPublicRoutes,
+  feePublicRoutes,
+  feeWebhookRoutes,
+  integrationRoutes,
+  certificateRoutes,
+  verifyRoutes,
+  setupRoutes,
+  searchRoutes,
+  pushRoutes,
 ];
 
 export async function buildApp(opts: { logger?: boolean } = {}) {

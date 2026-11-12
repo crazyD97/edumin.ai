@@ -2,11 +2,13 @@
 
 One platform, many schools. Each school gets its own branding, users, settings and completely isolated data. Edumin covers admissions, students, classes, attendance, fees, examinations, timetables, homework, communication, meetings, a school calendar, reports and role-based dashboards, plus a super-admin console for the SaaS owner.
 
+For the Indian market it adds WhatsApp/SMS/email alerts paid for with message credits, Razorpay fee collection into each school's own account (including pay links that work without logging in), certificates with QR verification, printable ID cards, an installable parent app (PWA) with push notifications, a setup checklist for new schools and Ctrl+K search.
+
 | | |
 |---|---|
 | **Backend** | Node.js · Fastify 5 · TypeScript · Drizzle ORM · PostgreSQL · Zod (validation + OpenAPI) |
 | **Frontend** | React 19 · Vite · Tailwind CSS 4 · TanStack Query · React Router · Recharts |
-| **Docs** | [Architecture](docs/ARCHITECTURE.md) · [Implementation checklist](docs/CHECKLIST.md) · [MCP / LLM readiness](docs/MCP.md) · [Deployment](docs/DEPLOYMENT.md) |
+| **Docs** | [Architecture](docs/ARCHITECTURE.md) · [Implementation checklist](docs/CHECKLIST.md) · [Messaging, payments & PWA](docs/MESSAGING.md) · [MCP / LLM readiness](docs/MCP.md) · [Deployment](docs/DEPLOYMENT.md) |
 
 ## Quick start
 
@@ -40,11 +42,13 @@ Open **http://localhost:5173**. The login page has one-click demo accounts in de
 | Principal | principal@greenwood.edu | Password@123 | greenwood |
 | Teacher | priya.nair@greenwood.edu | Password@123 | greenwood |
 | Accountant | accounts@greenwood.edu | Password@123 | greenwood |
-| Parent | parent@greenwood.edu | Password@123 | greenwood |
+| Parent | parent@greenwood.edu *or* 9876543210 | Password@123 | greenwood |
 | Student | student@greenwood.edu | Password@123 | greenwood |
 | Second tenant (trial) | admin@riverside.edu | Password@123 | riverside |
 
 **School subdomains** work out of the box in Chrome/Edge: open `http://greenwood.edumin.localhost:5173` and the login page is already branded for Greenwood — no school code needed.
+
+Messaging runs against simulators until provider keys are set, so WhatsApp/SMS alerts appear in **WhatsApp & SMS → Delivery log** without sending anything. Greenwood is seeded with 5,000 credits.
 
 API docs (OpenAPI / Swagger UI): **http://localhost:4000/api/docs**
 

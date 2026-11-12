@@ -2,6 +2,7 @@ import { Suspense, useEffect, useState, type ComponentType } from 'react';
 import { NavLink, Outlet, useLocation, useNavigate } from 'react-router';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import {
+  Award,
   BarChart3,
   Bell,
   BookOpen,
@@ -14,7 +15,11 @@ import {
   Handshake,
   LayoutDashboard,
   LogOut,
+  ListChecks,
   Megaphone,
+  Search,
+  Smartphone,
+  MessageCircle,
   Menu as MenuIcon,
   NotebookPen,
   Package,
@@ -28,7 +33,9 @@ import {
 import { useAuth } from '@/lib/auth';
 import { post } from '@/lib/api';
 import { ago } from '@/lib/format';
-import { Avatar, Loading, Menu, MenuItem, clsx } from '@/components/ui';
+import { Avatar, Loading, Menu, MenuItem, Modal, clsx } from '@/components/ui';
+import { canPromptInstall, isIos, isStandalone, onInstallAvailability, promptInstall } from '@/lib/pwa';
+import { CommandPalette } from '@/components/CommandPalette';
 
 interface NavItem {
   to: string;
@@ -59,6 +66,7 @@ const SCHOOL_NAV: { group: string; items: NavItem[] }[] = [
       { to: '/exams', label: 'Examinations', icon: BookOpen, perm: 'exams.view', feature: 'exams', familyLabel: 'Results' },
       { to: '/timetable', label: 'Timetable', icon: CalendarClock, perm: 'timetable.view', feature: 'timetable' },
       { to: '/homework', label: 'Homework', icon: NotebookPen, perm: 'homework.view', feature: 'homework' },
+      { to: '/certificates', label: 'Certificates & IDs', icon: Award, perm: 'certificates.view', feature: 'certificates', staffOnly: true },
     ],
   },
   { group: 'Finance', items: [{ to: '/fees', label: 'Fees', icon: CreditCard, perm: 'fees.view', feature: 'fees' }] },
@@ -67,11 +75,13 @@ const SCHOOL_NAV: { group: string; items: NavItem[] }[] = [
     items: [
       { to: '/announcements', label: 'Announcements', icon: Megaphone, perm: 'announcements.view', feature: 'communication' },
       { to: '/meetings', label: 'Meetings', icon: Handshake, perm: 'meetings.view', feature: 'meetings' },
+      { to: '/messaging', label: 'WhatsApp & SMS', icon: MessageCircle, perm: 'messaging.view', staffOnly: true },
     ],
   },
   {
     group: 'Administration',
     items: [
+      { to: '/setup', label: 'Setup checklist', icon: ListChecks, perm: 'settings.edit' },
       { to: '/staff', label: 'Staff', icon: UserSquare2, perm: 'staff.view' },
       { to: '/reports', label: 'Reports', icon: BarChart3, perm: 'reports.view', feature: 'reports' },
       { to: '/settings', label: 'Settings', icon: Settings },
@@ -234,6 +244,9 @@ export function AppShell() {
   const navigate = useNavigate();
   const loc = useLocation();
   const [open, setOpen] = useState(false);
+  const [iosHelp, setIosHelp] = useState(false);
+  const [canInstall, setCanInstall] = useState(canPromptInstall());
+  useEffect(() => onInstallAvailability(() => setCanInstall(canPromptInstall())), []);
   useEffect(() => setOpen(false), [loc.pathname]);
 
   return (
@@ -256,6 +269,17 @@ export function AppShell() {
         <button className="-ml-1 rounded-lg p-2 text-slate-600 hover:bg-slate-100 lg:hidden" onClick={() => setOpen(true)} aria-label="Open menu">
           <MenuIcon className="size-5" />
         </button>
+        {!user?.isPlatformAdmin && (
+          <button
+            type="button"
+            onClick={() => window.dispatchEvent(new Event('edumin:search'))}
+            className="flex h-9 w-full max-w-xs items-center gap-2 rounded-lg border border-slate-200 bg-slate-50 px-3 text-sm text-slate-400 hover:border-slate-300 hover:bg-white"
+          >
+            <Search className="size-4" />
+            <span className="flex-1 text-left">Search…</span>
+            <kbd className="hidden rounded border border-slate-200 bg-white px-1.5 text-[11px] sm:inline">Ctrl K</kbd>
+          </button>
+        )}
         <div className="flex-1" />
         <NotificationBell />
         <Menu
@@ -280,6 +304,18 @@ export function AppShell() {
               >
                 My profile
               </MenuItem>
+              {!isStandalone() && (canInstall || isIos()) && (
+                <MenuItem
+                  icon={<Smartphone className="size-4" />}
+                  onClick={async () => {
+                    close();
+                    if (canPromptInstall()) await promptInstall();
+                    else setIosHelp(true);
+                  }}
+                >
+                  Install app
+                </MenuItem>
+              )}
               <MenuItem
                 danger
                 icon={<LogOut className="size-4" />}
@@ -294,6 +330,15 @@ export function AppShell() {
           )}
         </Menu>
       </header>
+      <CommandPalette />
+      <Modal open={iosHelp} onClose={() => setIosHelp(false)} size="sm" title="Install on iPhone or iPad">
+        <ol className="list-decimal space-y-2 pl-5 text-sm text-slate-600">
+          <li>Open this page in <b>Safari</b>.</li>
+          <li>Tap the <b>Share</b> button (square with an arrow).</li>
+          <li>Choose <b>Add to Home Screen</b>, then <b>Add</b>.</li>
+        </ol>
+        <p className="mt-3 text-xs text-slate-500">Open the app from your home screen once to turn on notifications.</p>
+      </Modal>
       <main className="mx-auto max-w-[1400px] px-4 py-6 sm:px-6 lg:px-8">
         <Suspense fallback={<Loading />}>
           <Outlet />

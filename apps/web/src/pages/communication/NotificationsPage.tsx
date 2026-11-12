@@ -1,10 +1,61 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
+import { toast } from 'sonner';
+import { disablePush, enablePush, pushState, type PushState } from '@/lib/pwa';
 import { useNavigate } from 'react-router';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { Bell, CheckCheck } from 'lucide-react';
+import { Bell, BellRing, CheckCheck } from 'lucide-react';
 import { post } from '@/lib/api';
 import { fmtDateTime } from '@/lib/format';
 import { Button, Card, EmptyState, Loading, PageHeader, Tabs, clsx } from '@/components/ui';
+
+function PushCard() {
+  const [state, setState] = useState<PushState | null>(null);
+  const [busy, setBusy] = useState(false);
+  useEffect(() => {
+    pushState().then(setState).catch(() => setState('unsupported'));
+  }, []);
+  if (!state || state === 'unsupported') return null;
+  const toggle = async () => {
+    setBusy(true);
+    try {
+      if (state === 'on') {
+        await disablePush();
+        setState('off');
+      } else {
+        await enablePush();
+        setState('on');
+        toast.success('Notifications enabled on this device');
+      }
+    } catch (e) {
+      toast.error((e as Error).message);
+      setState(await pushState().catch(() => 'off' as PushState));
+    } finally {
+      setBusy(false);
+    }
+  };
+  return (
+    <div className="card mb-5 flex flex-col gap-3 p-4 sm:flex-row sm:items-center">
+      <BellRing className="size-5 shrink-0 text-brand" />
+      <div className="flex-1">
+        <p className="text-sm font-medium text-slate-900">Notifications on this device</p>
+        <p className="text-xs text-slate-500">
+          {state === 'on'
+            ? "You'll get alerts even when the app is closed."
+            : state === 'denied'
+              ? 'Blocked in your browser settings — allow notifications for this site to turn them on.'
+              : state === 'unavailable'
+                ? 'Install the app (profile menu → Install app) to get notifications on this device.'
+                : 'Get absence alerts, fee reminders and results instantly.'}
+        </p>
+      </div>
+      {(state === 'on' || state === 'off') && (
+        <Button size="sm" variant={state === 'on' ? 'secondary' : 'primary'} loading={busy} onClick={toggle}>
+          {state === 'on' ? 'Turn off' : 'Turn on'}
+        </Button>
+      )}
+    </div>
+  );
+}
 
 export function NotificationsPage() {
   const navigate = useNavigate();
@@ -34,6 +85,7 @@ export function NotificationsPage() {
           )
         }
       />
+      <PushCard />
       <Tabs
         tabs={[
           { value: 'all', label: 'All' },

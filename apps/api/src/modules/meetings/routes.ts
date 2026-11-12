@@ -223,7 +223,7 @@ export async function meetingRoutes(app: App) {
           .insert(meetings)
           .values({ schoolId: ctx.schoolId, teacherId, parentUserId: parents[0] ?? null, studentId: b.studentId, startsAt, endsAt: new Date(startsAt.getTime() + b.durationMin * 60000), location: b.location, agenda: b.agenda, status: 'approved', requestedBy: ctx.userId })
           .returning();
-        await notifyUsers(ctx.db, ctx.schoolId, parents, { type: 'meeting_scheduled', title: 'Parent–teacher meeting scheduled', body: `${fmt(startsAt)}${b.location ? ' at ' + b.location : ''}`, link: '/meetings', email: true });
+        await notifyUsers(ctx.db, ctx.schoolId, parents, { type: 'meeting_scheduled', title: 'Parent–teacher meeting scheduled', body: `${fmt(startsAt)}${b.location ? ' at ' + b.location : ''}`, link: '/meetings', deliver: { event: 'meeting', vars: { detail: `Parent–teacher meeting scheduled on ${fmt(startsAt)}${b.location ? ' at ' + b.location : ''}.` } }, createdBy: ctx.userId });
       }
       return ok(row);
     },
@@ -253,7 +253,7 @@ export async function meetingRoutes(app: App) {
       if (s && ['rejected', 'cancelled'].includes(s) && m.slotId) await ctx.db.update(meetingSlots).set({ isBooked: false }).where(eq(meetingSlots.id, m.slotId));
       if (s && s !== m.status) {
         const target = isTeacherSide ? [m.parentUserId!].filter(Boolean) : [m.teacherId];
-        await notifyUsers(ctx.db, ctx.schoolId, target, { type: 'meeting_update', title: `Meeting ${s}`, body: fmt(m.startsAt), link: '/meetings' });
+        await notifyUsers(ctx.db, ctx.schoolId, target, { type: 'meeting_update', title: `Meeting ${s}`, body: fmt(m.startsAt), link: '/meetings', deliver: { event: 'meeting', vars: { detail: `Your parent–teacher meeting on ${fmt(m.startsAt)} was ${s}.` } }, createdBy: ctx.userId });
       }
       return ok(row);
     },
@@ -270,7 +270,7 @@ registerJob({
       .from(meetings)
       .where(and(eq(meetings.status, 'approved'), sql`${meetings.reminderSentAt} is null`, sql`${meetings.startsAt} between now() and now() + interval '24 hours'`));
     for (const m of due) {
-      await notifyUsers(db, m.schoolId, [m.teacherId, m.parentUserId!].filter(Boolean), { type: 'meeting_reminder', title: 'Meeting reminder', body: `Parent–teacher meeting on ${fmt(m.startsAt)}`, link: '/meetings', email: true });
+      await notifyUsers(db, m.schoolId, [m.teacherId, m.parentUserId!].filter(Boolean), { type: 'meeting_reminder', title: 'Meeting reminder', body: `Parent–teacher meeting on ${fmt(m.startsAt)}`, link: '/meetings', deliver: { event: 'meeting', vars: { detail: `Reminder: parent–teacher meeting on ${fmt(m.startsAt)}${m.location ? ' at ' + m.location : ''}.` } } });
       await db.update(meetings).set({ reminderSentAt: new Date() }).where(eq(meetings.id, m.id));
     }
   },

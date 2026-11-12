@@ -1,9 +1,10 @@
 /** Platform Super Admin: tenants, plans, subscriptions, usage. */
 import { z } from 'zod';
-import { and, asc, count, desc, eq, ilike, or, sql, sum } from 'drizzle-orm';
+import { and, asc, count, desc, eq, gte, ilike, or, sql, sum } from 'drizzle-orm';
 import { ALL_FEATURES, SCHOOL_STATUSES } from '@edumin/shared';
 import { db } from '../../core/db';
-import { files, plans, schools, students, subscriptionEvents, users, payments, roles } from '../../db/schema';
+import { creditOrders, creditTransactions, files, outboundMessages, plans, schools, students, subscriptionEvents, users, payments, roles } from '../../db/schema';
+import { addCredits } from '../messaging/service';
 import { conflict, must } from '../../core/errors';
 import { effectiveFeatures, idParam, ok, pageQuery, platformCtxOf, typed, type App } from '../../core/http';
 import { provisionSchool } from './provision';
@@ -68,6 +69,16 @@ export async function platformRoutes(app: App) {
       .where(and(eq(schools.status, 'trial'), sql`${schools.trialEndsAt} < now() + interval '14 days'`))
       .orderBy(asc(schools.trialEndsAt))
       .limit(10);
+    const monthStart = new Date(new Date().getFullYear(), new Date().getMonth(), 1);
+    const messages = await db
+      .select({ channel: outboundMessages.channel, n: sql<number>`count(*)::int` })
+      .from(outboundMessages)
+      .where(gte(outboundMessages.createdAt, monthStart))
+      .groupBy(outboundMessages.channel);
+    const [credits] = await db
+      .select({ revenue: sql<number>`coalesce(sum(${creditOrders.amount}),0)::float`, sold: sql<number>`coalesce(sum(${creditOrders.credits}),0)::int` })
+      .from(creditOrders)
+      .where(and(eq(creditOrders.status, 'paid'), gte(creditOrders.paidAt, monthStart)));
     const statusMap = Object.fromEntries(byStatus.map((b) => [b.status, b.n]));
     return ok({
       schools: { total: byStatus.reduce((a, b) => a + b.n, 0), ...statusMap },
@@ -77,6 +88,8 @@ export async function platformRoutes(app: App) {
       byPlan,
       growth,
       expiringTrials,
+      messagesThisMonth: messages,
+      creditsThisMonth: credits,
     });
   });
 
@@ -171,6 +184,8 @@ export async function platformRoutes(app: App) {
       plan: row.plan,
       effectiveFeatures: effectiveFeatures(row.school, row.plan),
       usage: await usageFor(row.school.id),
+      credits: row.school.messageCredits,
+      creditLedger: await db.select().from(creditTransactions).where(eq(creditTransactions.schoolId, row.school.id)).orderBy(desc(creditTransactions.createdAt)).limit(30),
       admins,
       history,
     });
@@ -246,6 +261,34 @@ export async function platformRoutes(app: App) {
         createdBy: ctx.userId,
       });
       return ok({ recorded: true });
+    },
+  );
+
+  r.post(
+    '/platform/schools/:id/credits',
+    {
+      schema: {
+        tags: ['Platform'],
+        summary: 'Grant or deduct message credits (e.g. after an offline payment)',
+        params: idParam,
+        body: z.object({ credits: z.coerce.number().int().refine((n) => n !== 0, 'Enter a non-zero amount'), amountPaid: z.coerce.number().min(0).nullish(), note: z.string().trim().max(300).nullish() }),
+      },
+    },
+    async (req) => {
+      const ctx = platformCtxOf(req);
+      must((await db.select({ id: schools.id, credits: schools.messageCredits }).from(schools).where(eq(schools.id, req.params.id)))[0], 'School');
+      const balance = await db.transaction(async (tx) => {
+        const bal = await addCredits(tx, req.params.id, req.body.credits, {
+          kind: req.body.credits > 0 ? (req.body.amountPaid ? 'purchase' : 'grant') : 'adjust',
+          note: req.body.note ?? (req.body.credits > 0 ? 'Credits added by platform' : 'Credits deducted by platform'),
+          amountPaid: req.body.amountPaid ?? null,
+          createdBy: ctx.userId,
+        });
+        if (bal < 0) throw conflict('That would make the balance negative'); // rolls the transaction back
+        return bal;
+      });
+      await audit({ ...ctx, schoolId: req.params.id }, 'credits', 'school', req.params.id, req.body);
+      return ok({ balance });
     },
   );
 

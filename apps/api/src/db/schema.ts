@@ -25,7 +25,7 @@ import {
   smallint,
   time,
 } from 'drizzle-orm/pg-core';
-import type { Branding, SchoolSettings } from '@edumin/shared';
+import { DEFAULT_MESSAGING, type Branding, type MessagingSettings, type SchoolSettings } from '@edumin/shared';
 
 const id = () => uuid('id').primaryKey().defaultRandom();
 const schoolId = () =>
@@ -70,6 +70,8 @@ export const schools = pgTable('schools', {
   featureOverrides: jsonb('feature_overrides').$type<Record<string, boolean>>().notNull().default({}),
   branding: jsonb('branding').$type<Branding>().notNull(),
   settings: jsonb('settings').$type<SchoolSettings>().notNull(),
+  messaging: jsonb('messaging').$type<MessagingSettings>().notNull().default(DEFAULT_MESSAGING),
+  messageCredits: integer('message_credits').notNull().default(0),
   notes: text('notes'),
   createdAt: createdAt(),
   updatedAt: updatedAt(),
@@ -112,7 +114,7 @@ export const users = pgTable(
     id: id(),
     schoolId: uuid('school_id').references(() => schools.id, { onDelete: 'cascade' }), // null = platform admin
     roleId: uuid('role_id').references(() => roles.id),
-    email: varchar('email', { length: 255 }).notNull(),
+    email: varchar('email', { length: 255 }), // optional: parents often sign in with a mobile number
     passwordHash: text('password_hash').notNull(),
     fullName: varchar('full_name', { length: 200 }).notNull(),
     phone: varchar('phone', { length: 30 }),
@@ -126,6 +128,9 @@ export const users = pgTable(
   },
   (t) => [
     uniqueIndex('users_school_email').on(t.schoolId, t.email),
+    uniqueIndex('users_school_phone')
+      .on(t.schoolId, t.phone)
+      .where(sql`phone is not null`),
     uniqueIndex('users_platform_email')
       .on(t.email)
       .where(sql`school_id is null`),
@@ -816,19 +821,119 @@ export const notifications = pgTable(
   (t) => [index('notif_user_created').on(t.userId, t.createdAt)],
 );
 
-/** Outbox for email delivery. A worker (or the console driver in dev) drains it. */
-export const emailOutbox = pgTable('email_outbox', {
+/**
+ * Every message sent to parents/staff over email, WhatsApp or SMS. Rows are queued,
+ * credits are reserved at queue time, and the delivery job drains the queue.
+ */
+export const outboundMessages = pgTable(
+  'outbound_messages',
+  {
+    id: id(),
+    schoolId: uuid('school_id').references(() => schools.id, { onDelete: 'cascade' }),
+    channel: varchar('channel', { length: 12 }).notNull(), // email | whatsapp | sms
+    event: varchar('event', { length: 40 }).notNull(),
+    recipient: varchar('recipient', { length: 255 }).notNull(), // E.164 digits or email
+    recipientName: varchar('recipient_name', { length: 200 }),
+    studentId: uuid('student_id'),
+    userId: uuid('user_id'),
+    subject: varchar('subject', { length: 255 }),
+    body: text('body').notNull(),
+    params: jsonb('params').$type<string[]>().notNull().default([]),
+    attachment: jsonb('attachment').$type<{ kind: string; ref: Record<string, string>; filename: string } | null>(),
+    status: varchar('status', { length: 20 }).notNull().default('queued'), // queued | sent | delivered | read | failed | skipped
+    credits: integer('credits').notNull().default(0),
+    providerRef: varchar('provider_ref', { length: 120 }),
+    error: text('error'),
+    attempts: integer('attempts').notNull().default(0),
+    sentAt: timestamp('sent_at', { withTimezone: true }),
+    deliveredAt: timestamp('delivered_at', { withTimezone: true }),
+    createdBy: uuid('created_by'),
+    createdAt: createdAt(),
+  },
+  (t) => [index('outbound_school_created').on(t.schoolId, t.createdAt), index('outbound_status').on(t.status), index('outbound_provider_ref').on(t.providerRef)],
+);
+
+/** Message-credit ledger. schools.message_credits is the running balance. */
+export const creditTransactions = pgTable(
+  'credit_transactions',
+  {
+    id: id(),
+    schoolId: schoolId(),
+    delta: integer('delta').notNull(),
+    balanceAfter: integer('balance_after').notNull(),
+    kind: varchar('kind', { length: 20 }).notNull(), // purchase | grant | usage | refund | adjust
+    note: text('note'),
+    amountPaid: money('amount_paid'),
+    reference: varchar('reference', { length: 120 }),
+    createdBy: uuid('created_by'),
+    createdAt: createdAt(),
+  },
+  (t) => [index('credit_tx_school').on(t.schoolId, t.createdAt)],
+);
+
+/** A school buying a credit pack from the platform. */
+export const creditOrders = pgTable('credit_orders', {
   id: id(),
-  schoolId: uuid('school_id').references(() => schools.id, { onDelete: 'cascade' }),
-  to: varchar('to', { length: 255 }).notNull(),
-  subject: varchar('subject', { length: 255 }).notNull(),
-  body: text('body').notNull(),
-  status: varchar('status', { length: 20 }).notNull().default('queued'),
-  attempts: integer('attempts').notNull().default(0),
-  error: text('error'),
-  sentAt: timestamp('sent_at', { withTimezone: true }),
+  schoolId: schoolId(),
+  packKey: varchar('pack_key', { length: 30 }).notNull(),
+  credits: integer('credits').notNull(),
+  amount: money('amount').notNull(),
+  status: varchar('status', { length: 20 }).notNull().default('pending'),
+  gateway: varchar('gateway', { length: 20 }).notNull(),
+  gatewayOrderId: varchar('gateway_order_id', { length: 100 }),
+  gatewayPaymentId: varchar('gateway_payment_id', { length: 100 }),
+  createdBy: uuid('created_by'),
+  paidAt: timestamp('paid_at', { withTimezone: true }),
   createdAt: createdAt(),
 });
+
+/** Per-school third-party connections (e.g. the school's own Razorpay account). Secrets are encrypted. */
+export const schoolIntegrations = pgTable(
+  'school_integrations',
+  {
+    schoolId: schoolId(),
+    provider: varchar('provider', { length: 30 }).notNull(),
+    enabled: boolean('enabled').notNull().default(false),
+    config: jsonb('config').$type<Record<string, string>>().notNull().default({}),
+    secrets: text('secrets'), // AES-GCM encrypted JSON
+    updatedAt: updatedAt(),
+  },
+  (t) => [primaryKey({ columns: [t.schoolId, t.provider] })],
+);
+
+/** Web Push subscriptions for the installed app. */
+export const pushSubscriptions = pgTable('push_subscriptions', {
+  id: id(),
+  userId: uuid('user_id')
+    .notNull()
+    .references(() => users.id, { onDelete: 'cascade' }),
+  endpoint: text('endpoint').notNull().unique(),
+  p256dh: text('p256dh').notNull(),
+  auth: text('auth').notNull(),
+  userAgent: varchar('user_agent', { length: 255 }),
+  createdAt: createdAt(),
+});
+
+// ───────────────────────────── Certificates ─────────────────────────────
+
+export const certificates = pgTable(
+  'certificates',
+  {
+    id: id(),
+    schoolId: schoolId(),
+    studentId: uuid('student_id')
+      .notNull()
+      .references(() => students.id, { onDelete: 'cascade' }),
+    type: varchar('type', { length: 20 }).notNull(), // transfer | bonafide | character | study
+    serialNo: varchar('serial_no', { length: 50 }).notNull(),
+    data: jsonb('data').$type<Record<string, string | null>>().notNull(),
+    issuedBy: uuid('issued_by'),
+    issuedAt: timestamp('issued_at', { withTimezone: true }).notNull().defaultNow(),
+    revokedAt: timestamp('revoked_at', { withTimezone: true }),
+    revokeReason: text('revoke_reason'),
+  },
+  (t) => [uniqueIndex('cert_school_serial').on(t.schoolId, t.serialNo), index('cert_student').on(t.studentId)],
+);
 
 // ───────────────────────────── Meetings ─────────────────────────────
 

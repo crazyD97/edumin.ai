@@ -1,6 +1,6 @@
 import { z } from 'zod';
 import { and, eq, isNull, sql } from 'drizzle-orm';
-import type { SessionUser } from '@edumin/shared';
+import { normalizeIndianMobile, type SessionUser } from '@edumin/shared';
 import { db } from '../../core/db';
 import { schools, users } from '../../db/schema';
 import { AUTH_COOKIE, cookieOptions, hashPassword, signToken, verifyPassword } from '../../core/auth';
@@ -31,8 +31,8 @@ export async function authRoutes(app: App) {
       config: { rateLimit: { max: env.NODE_ENV === 'test' ? 10_000 : 20, timeWindow: '1 minute' } },
       schema: {
         tags: ['Auth'],
-        summary: 'Sign in. Omit schoolSlug to sign in as platform admin.',
-        body: z.object({ email: z.email(), password: z.string().min(1), schoolSlug: z.string().trim().toLowerCase().optional().nullable() }),
+        summary: 'Sign in with email or mobile number. Omit schoolSlug to sign in as platform admin.',
+        body: z.object({ email: z.string().trim().min(3).max(255).describe('Email address or 10-digit mobile number'), password: z.string().min(1), schoolSlug: z.string().trim().toLowerCase().optional().nullable() }),
       },
     },
     async (req, reply) => {
@@ -42,11 +42,17 @@ export async function authRoutes(app: App) {
         [schoolRow] = await db.select().from(schools).where(eq(schools.slug, schoolSlug));
         if (!schoolRow) throw unauthorized('School not found');
       }
-      const [user] = await db
+      const scope = schoolRow ? eq(users.schoolId, schoolRow.id) : isNull(users.schoolId);
+      const mobile = !email.includes('@') ? normalizeIndianMobile(email) : null;
+      // Mobile numbers are matched on their last 10 digits, however they were typed when saved.
+      const matches = await db
         .select()
         .from(users)
-        .where(and(sql`lower(${users.email}) = ${email.toLowerCase()}`, schoolRow ? eq(users.schoolId, schoolRow.id) : isNull(users.schoolId)));
-      if (!user || !(await verifyPassword(password, user.passwordHash))) throw unauthorized('Invalid email or password');
+        .where(and(scope, mobile ? sql`right(regexp_replace(${users.phone}, '[^0-9]', '', 'g'), 10) = ${mobile.slice(2)}` : sql`lower(${users.email}) = ${email.toLowerCase()}`))
+        .limit(2);
+      if (matches.length > 1) throw unauthorized('More than one account uses this mobile number. Sign in with your email instead.');
+      const [user] = matches;
+      if (!user || !(await verifyPassword(password, user.passwordHash))) throw unauthorized(mobile ? 'Invalid mobile number or password' : 'Invalid email or password');
       if (!user.isActive) throw new AppError(403, 'ACCOUNT_DISABLED', 'Your account has been disabled');
       if (schoolRow) {
         const blocked = schoolAccessError(schoolRow);

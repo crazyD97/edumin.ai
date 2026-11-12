@@ -1,6 +1,8 @@
 import { useMemo, useState } from 'react';
 import { useNavigate, useParams } from 'react-router';
-import { useQuery } from '@tanstack/react-query';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { toast } from 'sonner';
+import { openRazorpay } from '@/lib/razorpay';
 import { BadgePercent, CreditCard, Receipt, Wallet } from 'lucide-react';
 import { PAYMENT_METHODS } from '@edumin/shared';
 import { download, get, patch, post } from '@/lib/api';
@@ -13,7 +15,8 @@ import { FormModal } from '@/components/FormModal';
 
 export function StudentFeesPage() {
   const { id } = useParams();
-  const { can, user, hasFeature } = useAuth();
+  const { can, user, hasFeature, school } = useAuth();
+  const qc = useQueryClient();
   const navigate = useNavigate();
   const q = useQuery({ queryKey: ['ledger', id], queryFn: () => get<any>(`/fees/students/${id}/ledger`) });
   const heads = useQuery({ queryKey: ['fee-heads'], queryFn: () => get<any[]>('/fees/heads'), enabled: can('fees.approve') });
@@ -23,7 +26,18 @@ export function StudentFeesPage() {
   const [adjusting, setAdjusting] = useState<any>(null);
   const staff = user?.role.scope !== 'own';
   const online = useAction(() => post<any>('/fees/online/initiate', { studentId: id, amount: selectedBalance || q.data.summary.balance, invoiceIds: [...selected] }), {
-    onSuccess: (r) => navigate(r.checkoutUrl),
+    onSuccess: async (r: any) => {
+      if (r.gateway !== 'razorpay') return navigate(r.checkoutUrl);
+      try {
+        const paid = await openRazorpay({ keyId: r.keyId, orderId: r.razorpayOrderId, amount: r.amount, name: school?.name ?? 'School fees', description: `Fees · ${q.data.student.name}`, color: school?.branding.primaryColor, prefill: { name: user?.fullName, email: user?.email ?? undefined } });
+        const done = await post<any>(`/fees/online/${r.paymentId}/verify`, paid);
+        toast.success(`Payment successful · ${done.receiptNo}`);
+        setSelected(new Set());
+        qc.invalidateQueries({ queryKey: ['ledger'] });
+      } catch (e) {
+        toast.error((e as Error).message);
+      }
+    },
   });
   const cancel = useAction((invId: string) => post(`/fees/invoices/${invId}/cancel`), { success: 'Invoice cancelled', invalidate: [['ledger']] });
   const open = useMemo(() => q.data?.invoices.filter((i: any) => ['unpaid', 'partial'].includes(i.status)) ?? [], [q.data]);

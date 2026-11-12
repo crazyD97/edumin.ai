@@ -32,6 +32,7 @@ import {
   structureInput,
   studentLedger,
   updateStructure,
+  verifyOnlinePayment,
 } from './service';
 
 const F = { feature: 'fees' as const };
@@ -155,14 +156,28 @@ export async function feeRoutes(app: App) {
     async (req) => ok(await initiateOnlinePayment(ctxOf(req), req.body)),
   );
   r.post(
+    '/fees/online/:id/verify',
+    {
+      preValidation: guard('fees.view', F),
+      schema: { tags: ['Fees'], summary: 'Razorpay checkout callback (signature verified)', params: idParam, body: z.object({ razorpay_payment_id: z.string(), razorpay_order_id: z.string(), razorpay_signature: z.string() }) },
+    },
+    async (req) => {
+      const ctx = ctxOf(req);
+      const [p] = await ctx.db.select({ studentId: payments.studentId }).from(payments).where(and(eq(payments.id, req.params.id), eq(payments.schoolId, ctx.schoolId)));
+      await assertStudentAccess(ctx, must(p, 'Payment').studentId);
+      return ok(await verifyOnlinePayment(ctx, req.params.id, req.body));
+    },
+  );
+  r.post(
     '/fees/online/:id/mock-complete',
     { preValidation: guard('fees.view', F), schema: { tags: ['Fees'], summary: 'Mock gateway only: simulate the payer completing checkout', params: idParam, body: z.object({ success: z.boolean() }) } },
     async (req) => {
       if (env.PAYMENT_GATEWAY !== 'mock') throw badRequest('Not available with a live gateway');
       const ctx = ctxOf(req);
       requirePermission(ctx, 'fees.view');
-      const [p] = await ctx.db.select({ studentId: payments.studentId }).from(payments).where(and(eq(payments.id, req.params.id), eq(payments.schoolId, ctx.schoolId)));
+      const [p] = await ctx.db.select({ studentId: payments.studentId, gateway: payments.gateway }).from(payments).where(and(eq(payments.id, req.params.id), eq(payments.schoolId, ctx.schoolId)));
       await assertStudentAccess(ctx, must(p, 'Payment').studentId);
+      if (p.gateway !== 'mock') throw badRequest('This payment goes through Razorpay');
       return ok(await confirmOnlinePayment(ctx, req.params.id, req.body.success));
     },
   );

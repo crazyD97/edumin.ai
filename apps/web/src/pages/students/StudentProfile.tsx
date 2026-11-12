@@ -11,8 +11,9 @@ import { DataTable } from '@/components/DataTable';
 import { Documents } from '@/components/Documents';
 import { BarsChart, ChartEmpty, TrendChart } from '@/components/charts';
 import { StudentFormModal } from './StudentForm';
+import { CertificatesPanel } from '../certificates/CertificatesPanel';
 
-type Tab = 'overview' | 'history' | 'attendance' | 'results' | 'fees' | 'documents';
+type Tab = 'overview' | 'history' | 'attendance' | 'results' | 'fees' | 'certificates' | 'documents';
 
 export function StudentProfilePage() {
   const { id } = useParams();
@@ -32,6 +33,7 @@ export function StudentProfilePage() {
     ...(hasFeature('attendance') && can('attendance.view') ? [{ value: 'attendance' as Tab, label: 'Attendance' }] : []),
     ...(hasFeature('exams') && can('exams.view') ? [{ value: 'results' as Tab, label: 'Results' }] : []),
     ...(hasFeature('fees') && can('fees.view') ? [{ value: 'fees' as Tab, label: 'Fees' }] : []),
+    ...(hasFeature('certificates') && can('certificates.view') && staff ? [{ value: 'certificates' as Tab, label: 'Certificates' }] : []),
     { value: 'documents', label: 'Documents' },
   ];
 
@@ -141,6 +143,7 @@ export function StudentProfilePage() {
       {tab === 'attendance' && <AttendanceTab studentId={s.id} />}
       {tab === 'results' && <ResultsTab studentId={s.id} />}
       {tab === 'fees' && <FeesTab studentId={s.id} />}
+      {tab === 'certificates' && <CertificatesPanel studentId={s.id} studentStatus={s.status} />}
       {tab === 'documents' && (
         <Card title="Documents">
           <Documents entity="student" entityId={s.id} canUpload={can('students.edit') && staff} canDelete={can('students.edit') && staff} />

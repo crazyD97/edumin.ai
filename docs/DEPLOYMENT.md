@@ -20,11 +20,20 @@ The container applies migrations on start (`node dist/db/migrate.js`), then runs
 | `ROOT_DOMAIN` | | `edumin.localhost` | Schools are served at `<slug>.<ROOT_DOMAIN>` |
 | `PORT` | | `4000` | |
 | `UPLOAD_DIR` | | `./uploads` | Mount a persistent volume, or swap the storage driver for S3 |
-| `EMAIL_DRIVER` | | `console` | `console`, `smtp` (wire up a provider in `core/notify.ts`) or `none` |
-| `PAYMENT_GATEWAY` | | `mock` | Implement `PaymentGateway` for Razorpay/Stripe |
+| `PUBLIC_URL` | | `APP_URL` | Public HTTPS origin used in pay links and WhatsApp attachments |
+| `SECRETS_KEY` | | `JWT_SECRET` | Encrypts schools' Razorpay keys. Set it separately and back it up |
+| `EMAIL_DRIVER` | | `console` | `console`, `resend` or `none` |
+| `RESEND_API_KEY`, `EMAIL_FROM` | | — | Email via Resend |
+| `WHATSAPP_TOKEN`, `WHATSAPP_PHONE_NUMBER_ID`, `WHATSAPP_VERIFY_TOKEN`, `WHATSAPP_APP_SECRET` | | — | Platform WhatsApp number (Cloud API). Unset = simulated |
+| `MSG91_AUTH_KEY`, `MSG91_TEMPLATES` | | — | SMS via MSG91 with DLT template IDs. Unset = simulated |
+| `RAZORPAY_KEY_ID`, `RAZORPAY_KEY_SECRET`, `RAZORPAY_WEBHOOK_SECRET` | | — | Platform account that sells message credits |
+| `VAPID_PUBLIC_KEY`, `VAPID_PRIVATE_KEY` | | — | Web push for the installed app |
+| `PAYMENT_GATEWAY` | | `mock` in dev, `none` in production | `mock` enables simulated checkout. Never set it in production |
 | `WEB_DIST` | | `../web/dist` | Built SPA to serve |
 
 The web app reads `VITE_ROOT_DOMAIN` at build time (default `edumin.localhost`).
+
+Provider setup, the template wording to register with Meta and DLT, and webhooks are covered in [MESSAGING.md](MESSAGING.md).
 
 ## Subdomains
 
@@ -40,7 +49,9 @@ Point a wildcard DNS record `*.yourdomain.com` at the server and set `ROOT_DOMAI
 - [x] Auth checked before validation (no schema disclosure to unauthorised callers)
 - [x] Private files streamed only after school and entity access checks; SVGs served with a restrictive CSP
 - [x] Audit log of important actions
-- [ ] Before go-live: enable HTTPS, rotate `JWT_SECRET`, configure SMTP, set up DB backups (e.g. daily `pg_dump` plus point-in-time recovery), add monitoring/alerting, and consider PostgreSQL RLS as defence in depth
+- [x] Third-party secrets encrypted at rest (AES-256-GCM); Razorpay and WhatsApp webhooks signature-checked; public pay, attachment and verify links HMAC-signed with expiry
+- [x] Mock payment endpoints disabled unless `PAYMENT_GATEWAY=mock`
+- [ ] Before go-live: enable HTTPS, rotate `JWT_SECRET`, configure Resend/WhatsApp/MSG91 (see MESSAGING.md go-live checklist), set up DB backups (e.g. daily `pg_dump` plus point-in-time recovery), add monitoring/alerting, and consider PostgreSQL RLS as defence in depth
 
 ## Scaling notes
 

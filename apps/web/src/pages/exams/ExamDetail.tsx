@@ -1,12 +1,12 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useParams, useSearchParams } from 'react-router';
 import { useQuery } from '@tanstack/react-query';
-import { CalendarCheck, Download, Lock, Megaphone, Save, Unlock } from 'lucide-react';
+import { CalendarCheck, Download, Lock, Megaphone, Save, Send, Unlock } from 'lucide-react';
 import { get, openPdf, post, put } from '@/lib/api';
 import { useAuth } from '@/lib/auth';
 import { useAction, useClasses, useSections, useSubjects, toOptions } from '@/lib/hooks';
 import { fmtDate, fmtTime, pct } from '@/lib/format';
-import { Badge, Button, Card, Checkbox, EmptyState, ErrorState, Input, Loading, NoSections, PageHeader, Select, Stat, StatusBadge, Tabs, confirm, clsx } from '@/components/ui';
+import { Badge, Button, Card, Checkbox, EmptyState, ErrorState, Input, Loading, Modal, NoSections, PageHeader, Select, Stat, StatusBadge, Tabs, confirm, clsx } from '@/components/ui';
 import { DataTable } from '@/components/DataTable';
 import { BarsChart } from '@/components/charts';
 
@@ -299,6 +299,7 @@ function MarksEntry({ exam }: { exam: any }) {
 }
 
 function Results({ exam }: { exam: any }) {
+  const { can } = useAuth();
   const sections = useSections(exam.academicYearId);
   const [sectionId, setSectionId] = useState('');
   useEffect(() => {
@@ -311,6 +312,12 @@ function Results({ exam }: { exam: any }) {
     return [...m.entries()].map(([id, name]) => ({ id, name }));
   }, [q.data]);
   const sm = q.data?.summary;
+  const [sending, setSending] = useState(false);
+  const [channels, setChannels] = useState<string[]>(['whatsapp', 'email']);
+  const send = useAction(() => post<any>('/messaging/report-cards', { examId: exam.id, sectionId, channels }), {
+    success: (r: any) => (r.queued ? `Report cards queued for ${r.queued} message(s)${r.credits ? ` · ${r.credits} credits` : ''}` : (r.reason ?? 'Nothing was sent')),
+    onSuccess: () => setSending(false),
+  });
   return (
     <div className="space-y-6">
       <div className="flex flex-wrap items-center gap-2">
@@ -318,7 +325,34 @@ function Results({ exam }: { exam: any }) {
         <Button variant="secondary" className="ml-auto" icon={<Download className="size-4" />} disabled={!q.data?.results.length} onClick={() => openPdf(`/exams/${exam.id}/report-cards`, { sectionId })}>
           Report cards (PDF)
         </Button>
+        {exam.status === 'published' && can('messaging.create') && (
+          <Button variant="secondary" icon={<Send className="size-4" />} disabled={!q.data?.results.length} onClick={() => setSending(true)}>
+            Send to parents
+          </Button>
+        )}
       </div>
+      <Modal
+        open={sending}
+        onClose={() => setSending(false)}
+        size="sm"
+        title="Send report cards to parents"
+        description="Each student's primary guardian gets their own report card PDF."
+        footer={
+          <Button icon={<Send className="size-4" />} disabled={!channels.length} loading={send.isPending} onClick={() => send.mutate()}>
+            Send
+          </Button>
+        }
+      >
+        <div className="space-y-3">
+          {[
+            ['whatsapp', 'WhatsApp (1 credit each)'],
+            ['email', 'Email (free)'],
+            ['sms', 'SMS — result summary only, no PDF (1 credit each)'],
+          ].map(([c, label]) => (
+            <Checkbox key={c} checked={channels.includes(c)} onChange={(on) => setChannels((p) => (on ? [...p, c] : p.filter((x) => x !== c)))} label={label} />
+          ))}
+        </div>
+      </Modal>
       {q.isLoading ? (
         <Loading />
       ) : (
