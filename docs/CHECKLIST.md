@@ -40,9 +40,21 @@
 - ✅ Production build: API bundle serves the SPA; Dockerfile + compose
 - ⚠️ Dockerfile written but not built in this environment (Docker daemon wasn't running)
 
+## Phase A — India launch essentials
+- ✅ Messaging framework: email (Resend), WhatsApp (Cloud API) and SMS (MSG91 DLT) with per-school channel toggles and an event × channel matrix; simulators when keys are absent
+- ✅ Message credits: packs, platform Razorpay checkout and webhook, ledger, atomic reservation, refunds on failure, low-balance warnings, platform grants
+- ✅ Delivery log with retry; WhatsApp status webhook; PDF attachments (receipts, report cards) via signed links; "Send report cards to parents"
+- ✅ Razorpay fee collection into each school's own account (encrypted keys, signature and webhook verification); public signed pay links in fee reminders
+- ✅ Certificates (TC, Bonafide, Character, Study) with serials, QR verification and revocation; student and staff ID cards (CR80, 10 per A4 sheet)
+- ✅ PWA: per-school manifest, service worker, install prompt (and iOS instructions), web push
+- ✅ Parent login by mobile number; bulk parent-login creation with credential slips and WhatsApp/SMS delivery
+- ✅ Setup checklist: quick class setup, staff CSV import, parent logins; dashboard banner
+- ✅ Ctrl+K global search (students, guardians' phones, staff, receipts, applications, certificates), scoped by role
+- ✅ 14 new integration tests (41 total)
+- ⚠️ Real providers not exercised: WhatsApp, MSG91, Resend and Razorpay calls are written against their documented APIs but were only run through the simulators/mocks here
+
 ## Known limitations / next steps
 - ⏭️ Plan limits (`maxStudents`, `maxStaff`) are displayed but not enforced
-- ⏭️ SMTP driver is a stub (emails are queued and logged)
 - ⏭️ Student-specific fee structures are created by student ID; a student picker would be friendlier
 - ⏭️ Timetable clash detection covers teachers, not rooms
 - ⏭️ Report cards are per exam; a cumulative term/annual report card is a natural next step

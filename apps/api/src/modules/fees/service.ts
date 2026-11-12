@@ -29,10 +29,13 @@ import { assertStudentAccess, requirePermission, scopedStudentIds, withTx, type 
 import { badRequest, must } from '../../core/errors';
 import { nextNumber } from '../../core/sequence';
 import { audit } from '../../core/audit';
-import { audience, notifyUsers } from '../../core/notify';
+import { audience, notifyFamilies, notifyUsers } from '../../core/notify';
 import { resolveYearId } from '../academics/routes';
 import { createDoc, fmtMoney, footer, infoGrid, letterhead, loadSchoolHeader, table, toBuffer } from '../../core/pdf';
-import { getGateway } from './gateway';
+import { availableGateway, createCheckout, schoolRazorpay } from './gateway';
+import { signLink } from '../../core/crypto';
+import { verifyPaymentSignature } from '../../core/razorpay';
+import { publicUrl } from '../../core/env';
 
 /** Amount still owed on an invoice. */
 export const BALANCE = sql<number>`(${feeInvoices.amount} - ${feeInvoices.discount} - ${feeInvoices.scholarship} + ${feeInvoices.lateFee} - ${feeInvoices.paid})`;
@@ -483,17 +486,48 @@ export async function recordPayment(ctx: Ctx, v: z.infer<typeof paymentInput>, o
 
 async function afterPayment(ctx: Ctx, p: typeof payments.$inferSelect) {
   await audit(ctx, 'payment', 'payment', p.id, { amount: p.amount, method: p.method });
-  const recipients = await audience.forStudents(ctx.db, ctx.schoolId, [p.studentId], { parents: true });
-  await notifyUsers(ctx.db, ctx.schoolId, recipients, { type: 'fee_payment', title: `Payment received: ${p.receiptNo}`, body: `Amount ${p.amount.toFixed(2)} via ${p.method}`, link: '/fees' });
+  await notifyFamilies(ctx.db, ctx.schoolId, [p.studentId], {
+    type: 'fee_payment',
+    title: `Payment received: ${p.receiptNo}`,
+    body: `Amount ${p.amount.toFixed(2)} via ${p.method}`,
+    link: '/fees',
+    event: 'fee_receipt',
+    vars: { amount: fmtMoney(p.amount), receipt: p.receiptNo },
+    attachment: () => ({ kind: 'receipt', ref: { paymentId: p.id }, filename: `receipt-${p.receiptNo}.pdf` }),
+    who: { parents: true },
+    createdBy: ctx.userId,
+  });
 }
 
 /** Online payments: create a pending payment and hand off to the gateway. */
 export async function initiateOnlinePayment(ctx: Ctx, v: { studentId: string; amount: number; invoiceIds?: string[] }) {
   if (!ctx.features.has('online_payments')) throw badRequest('Online payments are not enabled for this school');
-  const { payment } = await recordPayment(ctx, { ...v, method: 'online' }, { status: 'pending', gateway: getGateway().name });
-  const checkout = await getGateway().createCheckout({ paymentId: payment.id, amount: payment.amount, description: `Fee payment ${payment.receiptNo}` });
+  const gateway = await availableGateway(ctx.db, ctx.schoolId);
+  if (!gateway) throw badRequest('Online payment is not set up for this school yet. Please pay at the school office.');
+  const { payment } = await recordPayment(ctx, { ...v, method: 'online' }, { status: 'pending', gateway });
+  const [s] = await ctx.db.select({ name: sql<string>`${students.firstName} || ' ' || ${students.lastName}` }).from(students).where(eq(students.id, v.studentId));
+  const checkout = await createCheckout(ctx.db, ctx.schoolId, { paymentId: payment.id, amount: payment.amount, receiptNo: payment.receiptNo, studentName: s?.name ?? '' });
   await ctx.db.update(payments).set({ gatewayRef: checkout.reference, notes: JSON.stringify({ invoiceIds: v.invoiceIds ?? [] }) }).where(eq(payments.id, payment.id));
-  return { paymentId: payment.id, receiptNo: payment.receiptNo, ...checkout };
+  return { paymentId: payment.id, receiptNo: payment.receiptNo, amount: payment.amount, ...checkout };
+}
+
+/** Razorpay checkout callback: check the signature against the school's own secret, then settle. */
+export async function verifyOnlinePayment(ctx: Ctx, paymentId: string, r: { razorpay_payment_id: string; razorpay_order_id: string; razorpay_signature: string }) {
+  const keys = await schoolRazorpay(ctx.db, ctx.schoolId);
+  if (!keys) throw badRequest('Razorpay is not connected');
+  const [p] = await ctx.db.select().from(payments).where(and(eq(payments.id, paymentId), eq(payments.schoolId, ctx.schoolId)));
+  must(p, 'Payment');
+  if (p.gatewayRef !== r.razorpay_order_id || !verifyPaymentSignature(keys.keySecret, r.razorpay_order_id, r.razorpay_payment_id, r.razorpay_signature)) {
+    throw badRequest('Payment verification failed');
+  }
+  await ctx.db.update(payments).set({ reference: r.razorpay_payment_id }).where(eq(payments.id, p.id));
+  return confirmOnlinePayment(ctx, p.id, true);
+}
+
+/** A login-free link parents can open from WhatsApp/SMS to pay outstanding fees. */
+export function payLink(studentId: string) {
+  const { exp, sig } = signLink(`pay:${studentId}`, 30 * 86400);
+  return `${publicUrl()}/pay/${studentId}?exp=${exp}&sig=${sig}`;
 }
 
 /** Called from the gateway webhook (or the mock confirm endpoint) once payment succeeds. */
@@ -627,14 +661,17 @@ export async function sendFeeReminders(ctx: Ctx, f: { classId?: string; minBalan
   let notified = 0;
   const [school] = await ctx.db.select({ settings: schools.settings }).from(schools).where(eq(schools.id, ctx.schoolId));
   for (const d of dues.filter((d) => d.balance >= (f.minBalance ?? 0.01))) {
-    const recipients = await audience.forStudents(ctx.db, ctx.schoolId, [d.studentId], { parents: true, students: false });
-    notified += await notifyUsers(ctx.db, ctx.schoolId, recipients, {
+    const res = await notifyFamilies(ctx.db, ctx.schoolId, [d.studentId], {
       type: 'fee_reminder',
       title: `Fee reminder for ${d.name}`,
       body: `Overdue balance: ${fmtMoney(d.balance, school.settings.currency)}. Please pay at the earliest.`,
       link: '/fees',
-      email: true,
+      event: 'fee_reminder',
+      vars: { amount: fmtMoney(d.balance, school.settings.currency), link: payLink(d.studentId) },
+      who: { parents: true },
+      createdBy: ctx.userId,
     });
+    notified += res?.queued ?? 0;
   }
   return { students: dues.length, notified };
 }

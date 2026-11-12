@@ -7,10 +7,11 @@ import { ApiError, get, patch, post, put, upload } from '@/lib/api';
 import { useAuth } from '@/lib/auth';
 import { applyBranding } from '@/lib/branding';
 import { useAction } from '@/lib/hooks';
+import { IntegrationsTab } from './IntegrationsTab';
 import { schoolUrl } from '@/lib/tenant';
 import { Avatar, Badge, Button, Card, Checkbox, Field, Input, Loading, Modal, PageHeader, Select, Tabs, Textarea, clsx } from '@/components/ui';
 
-type Tab = 'branding' | 'general' | 'roles' | 'profile';
+type Tab = 'branding' | 'general' | 'integrations' | 'roles' | 'profile';
 
 export function SettingsPage() {
   const { can, user } = useAuth();
@@ -18,6 +19,7 @@ export function SettingsPage() {
   const school = !!user?.school;
   const tabs: { value: Tab; label: string }[] = [
     ...(school && can('settings.view') ? [{ value: 'branding' as Tab, label: 'School & branding' }, { value: 'general' as Tab, label: 'General' }] : []),
+    ...(school && can('settings.view') ? [{ value: 'integrations' as Tab, label: 'Payments & integrations' }] : []),
     ...(school && can('users.view') ? [{ value: 'roles' as Tab, label: 'Roles & permissions' }] : []),
     { value: 'profile', label: 'My profile' },
   ];
@@ -29,6 +31,7 @@ export function SettingsPage() {
       {tab === 'branding' && <Branding />}
       {tab === 'general' && <General />}
       {tab === 'roles' && <Roles />}
+      {tab === 'integrations' && <IntegrationsTab />}
       {tab === 'profile' && <Profile />}
     </>
   );
@@ -392,7 +395,7 @@ function Profile() {
             <Input value={fullName} onChange={(e) => setFullName(e.target.value)} />
           </Field>
           <Field label="Email">
-            <Input value={user?.email} disabled />
+            <Input value={user?.email ?? "Signs in with mobile number"} disabled />
           </Field>
           <Field label="Phone">
             <Input value={phone} onChange={(e) => setPhone(e.target.value)} />

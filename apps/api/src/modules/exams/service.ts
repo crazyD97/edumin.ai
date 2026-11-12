@@ -27,7 +27,7 @@ import {
 import { assertSectionAccess, assertStudentAccess, can, ownStudentIds, requirePermission, scopedSectionIds, teacherSectionIds, type Ctx } from '../../core/context';
 import { badRequest, forbidden, must } from '../../core/errors';
 import { audit } from '../../core/audit';
-import { audience, notifyUsers } from '../../core/notify';
+import { audience, notifyFamilies, notifyUsers } from '../../core/notify';
 import { resolveYearId } from '../academics/routes';
 import { createDoc, footer, infoGrid, letterhead, loadSchoolHeader, table, toBuffer, type Doc, type SchoolHeader } from '../../core/pdf';
 import { ATTENDANCE_SCORE } from '../attendance/service';
@@ -124,12 +124,14 @@ export async function updateExam(ctx: Ctx, id: string, v: z.infer<typeof examInp
 async function announceExam(ctx: Ctx, exam: typeof exams.$inferSelect) {
   const classIds = (await ctx.db.selectDistinct({ id: examPapers.classId }).from(examPapers).where(eq(examPapers.examId, exam.id))).map((r) => r.id);
   const studentIds = await audience.studentsInClasses(ctx.db, ctx.schoolId, classIds, exam.academicYearId);
-  const recipients = await audience.forStudents(ctx.db, ctx.schoolId, studentIds);
-  await notifyUsers(ctx.db, ctx.schoolId, recipients, {
+  await notifyFamilies(ctx.db, ctx.schoolId, studentIds, {
     type: 'exam_scheduled',
     title: `${exam.name} has been scheduled`,
     body: exam.startDate ? `Starts ${exam.startDate}. Check the exam timetable for details.` : 'Check the exam timetable for details.',
     link: `/exams/${exam.id}`,
+    event: 'exam_scheduled',
+    vars: { exam: exam.name, date: exam.startDate ? new Date(exam.startDate + 'T00:00:00').toLocaleDateString('en-IN', { day: 'numeric', month: 'short' }) : 'soon' },
+    createdBy: ctx.userId,
   });
 }
 
@@ -524,8 +526,20 @@ export async function publishExam(ctx: Ctx, examId: string, publish: boolean) {
     const incomplete = results.filter((r) => !r.complete).length;
     if (!results.length) throw badRequest('No results to publish');
     const [row] = await ctx.db.update(exams).set({ status: 'published', approvedBy: ctx.userId, approvedAt: new Date() }).where(eq(exams.id, examId)).returning();
-    const recipients = await audience.forStudents(ctx.db, ctx.schoolId, results.map((r) => r.studentId));
-    await notifyUsers(ctx.db, ctx.schoolId, recipients, { type: 'exam_results', title: `Results published: ${exam.name}`, body: 'View the result and download the report card.', link: `/exams/${examId}`, email: true });
+    const byStudent = new Map(results.map((r) => [r.studentId, r]));
+    await notifyFamilies(ctx.db, ctx.schoolId, results.map((r) => r.studentId), {
+      type: 'exam_results',
+      title: `Results published: ${exam.name}`,
+      body: 'View the result and download the report card.',
+      link: `/exams/${examId}`,
+      event: 'exam_results',
+      vars: (s) => {
+        const r = byStudent.get(s.id)!;
+        return { exam: exam.name, result: r.percentage === null ? 'Absent' : `${r.percentage}%, grade ${r.grade ?? '-'}${r.rank ? `, rank ${r.rank}` : ''}` };
+      },
+      attachment: (studentId) => ({ kind: 'report_card', ref: { examId, studentId }, filename: `report-card-${byStudent.get(studentId)?.admissionNo ?? studentId}.pdf` }),
+      createdBy: ctx.userId,
+    });
     await audit(ctx, 'publish', 'exam', examId, { incomplete });
     return { ...row, incomplete };
   }

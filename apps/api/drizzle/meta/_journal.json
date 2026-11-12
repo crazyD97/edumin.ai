@@ -8,6 +8,27 @@
       "when": 1793682387092,
       "tag": "0000_init",
       "breakpoints": true
+    },
+    {
+      "idx": 1,
+      "version": "7",
+      "when": 1794459159125,
+      "tag": "0001_phase_a",
+      "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1794459160328,
+      "tag": "0002_drop_email_outbox",
+      "breakpoints": true
+    },
+    {
+      "idx": 3,
+      "version": "7",
+      "when": 1794459170421,
+      "tag": "0003_backfill_phase_a",
+      "breakpoints": true
     }
   ]
 }

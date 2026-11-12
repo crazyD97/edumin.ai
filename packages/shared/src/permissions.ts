@@ -24,6 +24,8 @@ export const MODULES = {
   meetings: 'Meetings',
   events: 'Events',
   reports: 'Reports',
+  certificates: 'Certificates & ID Cards',
+  messaging: 'Messaging (WhatsApp/SMS/Email)',
   settings: 'School Settings',
   users: 'Users & Roles',
 } as const;
@@ -68,6 +70,8 @@ export const DEFAULT_ROLES: Record<SystemRoleKey, { name: string; scope: DataSco
       ...p('meetings', '*'),
       ...p('events', '*'),
       ...p('reports', ['view', 'export']),
+      ...p('certificates', '*'),
+      ...p('messaging', ['view', 'create']),
       ...p('settings', ['view']),
       ...p('users', ['view']),
     ],
@@ -96,6 +100,7 @@ export const DEFAULT_ROLES: Record<SystemRoleKey, { name: string; scope: DataSco
       ...p('students', ['view']),
       ...p('academics', ['view']),
       ...p('fees', '*'),
+      ...p('messaging', ['view', 'create']),
       ...p('announcements', ['view']),
       ...p('events', ['view']),
       ...p('reports', ['view', 'export']),
@@ -146,6 +151,8 @@ export const FEATURES = {
   events: 'Events & Calendar',
   reports: 'Reports & Analytics',
   online_payments: 'Online Payments',
+  messaging: 'WhatsApp, SMS & Email Delivery',
+  certificates: 'Certificates & ID Cards',
   custom_domain: 'Custom Subdomain',
 } as const;
 export type FeatureKey = keyof typeof FEATURES;

@@ -7,6 +7,9 @@ import { AuthProvider } from './lib/auth';
 import { ConfirmHost } from './components/ui';
 import { App } from './App';
 import './index.css';
+import { registerServiceWorker } from './lib/pwa';
+
+registerServiceWorker();
 
 const queryClient = new QueryClient({
   defaultOptions: {

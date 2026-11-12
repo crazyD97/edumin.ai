@@ -3,11 +3,11 @@
  * (e.g. pg-boss/BullMQ) when running several instances.
  */
 import type { FastifyBaseLogger } from 'fastify';
-import { drainEmailOutbox } from './core/notify';
+import { deliverQueued } from './modules/messaging/service';
 
 type Job = { name: string; everyMs: number; run: () => Promise<unknown> };
 
-const jobs: Job[] = [{ name: 'email-outbox', everyMs: 30_000, run: () => drainEmailOutbox() }];
+const jobs: Job[] = [{ name: 'message-delivery', everyMs: 5_000, run: () => deliverQueued() }];
 
 export function registerJob(job: Job) {
   jobs.push(job);

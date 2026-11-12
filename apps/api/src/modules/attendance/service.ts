@@ -8,7 +8,7 @@ import { ATTENDANCE_STATUSES } from '@edumin/shared';
 import { attendanceRecords, classes, enrollments, leaveRequests, roles, schools, sections, staffAttendance, staffProfiles, students, users } from '../../db/schema';
 import { assertCanTeachSection, assertSectionAccess, assertStudentAccess, requirePermission, scopedStudentIds, ownStudentIds, type Ctx } from '../../core/context';
 import { badRequest, forbidden, must } from '../../core/errors';
-import { audience, notifyUsers } from '../../core/notify';
+import { audience, notifyFamilies, notifyUsers } from '../../core/notify';
 import { getSection } from '../academics/routes';
 import { audit } from '../../core/audit';
 
@@ -91,12 +91,15 @@ export async function markAttendance(ctx: Ctx, input: z.infer<typeof markInput>)
     const newlyAbsent = input.records.filter((r) => r.status === 'absent' && before.get(r.studentId) !== 'absent').map((r) => r.studentId);
     for (const sid of newlyAbsent) {
       const [s] = await ctx.db.select({ firstName: students.firstName, lastName: students.lastName }).from(students).where(eq(students.id, sid));
-      const recipients = await audience.forStudents(ctx.db, ctx.schoolId, [sid], { parents: true });
-      await notifyUsers(ctx.db, ctx.schoolId, recipients, {
+      await notifyFamilies(ctx.db, ctx.schoolId, [sid], {
         type: 'attendance_alert',
         title: `${s.firstName} ${s.lastName} was marked absent`,
         body: `Attendance for ${input.date}. Please contact the school if this is unexpected.`,
         link: '/attendance',
+        event: 'attendance_absent',
+        vars: { date: new Date(input.date + 'T00:00:00').toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' }) },
+        who: { parents: true },
+        createdBy: ctx.userId,
       });
     }
   }
@@ -207,14 +210,16 @@ export async function sendLowAttendanceAlerts(ctx: Ctx, f: { from: string; to: s
   const { threshold, students: list } = await lowAttendance(ctx, f);
   let sent = 0;
   for (const s of list) {
-    const recipients = await audience.forStudents(ctx.db, ctx.schoolId, [s.studentId]);
-    sent += await notifyUsers(ctx.db, ctx.schoolId, recipients, {
+    const res = await notifyFamilies(ctx.db, ctx.schoolId, [s.studentId], {
       type: 'attendance_alert',
       title: `Low attendance: ${s.name} (${s.percentage}%)`,
       body: `Attendance between ${f.from} and ${f.to} is below the required ${threshold}%.`,
       link: '/attendance',
-      email: true,
+      event: 'attendance_low',
+      vars: { percent: `${s.percentage}%`, threshold: `${threshold}%` },
+      createdBy: ctx.userId,
     });
+    sent += res?.queued ?? 0;
   }
   return { students: list.length, notified: sent };
 }

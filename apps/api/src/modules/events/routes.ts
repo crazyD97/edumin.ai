@@ -99,7 +99,7 @@ async function announceEvent(ctx: Ctx, e: typeof events.$inferSelect) {
     recipients = (await ctx.db.execute<{ id: string }>(sql`select id from users where school_id = ${ctx.schoolId} and is_active`)).map((r) => r.id);
   }
   const when = e.startDate === e.endDate ? e.startDate : `${e.startDate} → ${e.endDate}`;
-  await notifyUsers(ctx.db, ctx.schoolId, recipients.filter((r) => r !== ctx.userId), { type: `event_${e.type}`, title: e.type === 'holiday' ? `Holiday: ${e.title}` : e.title, body: `${when}${e.location ? ' · ' + e.location : ''}`, link: '/calendar' });
+  await notifyUsers(ctx.db, ctx.schoolId, recipients.filter((r) => r !== ctx.userId), { type: `event_${e.type}`, title: e.type === 'holiday' ? `Holiday: ${e.title}` : e.title, body: `${when}${e.location ? ' · ' + e.location : ''}`, link: '/calendar', deliver: { event: 'event', vars: { title: e.type === 'holiday' ? `Holiday: ${e.title}` : e.title, when } }, createdBy: ctx.userId });
 }
 
 export async function eventRoutes(app: App) {

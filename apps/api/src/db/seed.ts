@@ -11,10 +11,11 @@
  *   Student:         student@greenwood.edu / Password@123
  *   Riverside admin: admin@riverside.edu / Password@123      (school: riverside)
  */
-import { sql } from 'drizzle-orm';
-import { ALL_FEATURES } from '@edumin/shared';
+import { eq, sql } from 'drizzle-orm';
+import { ALL_FEATURES, DEFAULT_MESSAGING } from '@edumin/shared';
 import { db, sqlClient } from '../core/db';
-import { plans, users } from './schema';
+import { plans, schools, users } from './schema';
+import { addCredits } from '../modules/messaging/service';
 import { hashPassword } from '../core/auth';
 import { runMigrations } from './migrate';
 import { provisionSchool } from '../modules/platform/provision';
@@ -92,6 +93,12 @@ const greenwood = await provisionSchool(db, {
   admin: { fullName: 'Anita Desai', email: 'admin@greenwood.edu', password: 'Password@123' },
 });
 await seedSchoolData(greenwood.school.id, { size: 'large' });
+// Messaging demo: WhatsApp + SMS on (simulated until provider keys are set) and a credit balance.
+await db
+  .update(schools)
+  .set({ messaging: { ...DEFAULT_MESSAGING, channels: { email: true, whatsapp: true, sms: true } } })
+  .where(eq(schools.id, greenwood.school.id));
+await addCredits(db, greenwood.school.id, 5000, { kind: 'purchase', note: 'Bought 5,000 credits', amountPaid: 2249, reference: 'demo' });
 
 const riverside = await provisionSchool(db, {
   name: 'Riverside Academy',
@@ -108,4 +115,5 @@ console.log('Seed complete.');
 console.log('  Platform admin  admin@edumin.app / Admin@123');
 console.log('  Greenwood       admin@greenwood.edu / Password@123   (school code: greenwood)');
 console.log('  Riverside       admin@riverside.edu / Password@123   (school code: riverside)');
+console.log('  Parent (mobile) 9876543210 / Password@123          (school code: greenwood)');
 await sqlClient.end();

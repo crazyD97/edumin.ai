@@ -15,6 +15,7 @@ import {
   students,
   subjects,
   users,
+  outboundMessages,
 } from './schema';
 import { academicYearFor } from '../modules/platform/provision';
 import { seedActivity } from './seed-activity';
@@ -149,11 +150,13 @@ export async function seedSchoolData(schoolId: string, opts: { size: 'small' | '
   // ── Demo portal accounts: first student of the top class + their parent ──
   const demoStudent = allStudents[allStudents.length - perSection * sectionNames.length];
   const [stuUser] = await db.insert(users).values({ schoolId, roleId: role('student'), email: `student@${domain}`, fullName: 'Demo Student', passwordHash: pw }).returning();
-  const [parUser] = await db.insert(users).values({ schoolId, roleId: role('parent'), email: `parent@${domain}`, fullName: 'Demo Parent', passwordHash: pw }).returning();
+  // The demo parent can also sign in with this mobile number.
+  const demoMobile = large ? '9876543210' : '9876501234';
+  const [parUser] = await db.insert(users).values({ schoolId, roleId: role('parent'), email: `parent@${domain}`, phone: demoMobile, fullName: 'Demo Parent', passwordHash: pw }).returning();
   const [st] = await db.update(students).set({ userId: stuUser.id }).where(eq(students.id, demoStudent.id)).returning();
   await db.update(users).set({ fullName: `${st.firstName} ${st.lastName}` }).where(eq(users.id, stuUser.id));
   const [link] = await db.select().from(studentGuardians).where(eq(studentGuardians.studentId, demoStudent.id));
-  const [gd] = await db.update(guardians).set({ userId: parUser.id, email: `parent@${domain}` }).where(eq(guardians.id, link.guardianId)).returning();
+  const [gd] = await db.update(guardians).set({ userId: parUser.id, email: `parent@${domain}`, phone: demoMobile }).where(eq(guardians.id, link.guardianId)).returning();
   await db.update(users).set({ fullName: gd.name }).where(eq(users.id, parUser.id));
 
   await seedActivity({
@@ -170,4 +173,6 @@ export async function seedSchoolData(schoolId: string, opts: { size: 'small' | '
     students: allStudents,
     demo: { studentId: demoStudent.id, sectionId: demoStudent.sectionId, parentUserId: parUser.id, studentUserId: stuUser.id },
   });
+  // Generating history triggers receipts/alerts; the demo starts with an empty message log.
+  await db.delete(outboundMessages).where(eq(outboundMessages.schoolId, schoolId));
 }

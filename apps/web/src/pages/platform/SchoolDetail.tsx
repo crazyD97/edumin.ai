@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import { useParams } from 'react-router';
 import { useQuery } from '@tanstack/react-query';
-import { ExternalLink, KeyRound, Pause, Play, Receipt } from 'lucide-react';
+import { Coins, ExternalLink, KeyRound, Pause, Play, Receipt } from 'lucide-react';
 import { ALL_FEATURES, FEATURES } from '@edumin/shared';
 import { get, patch, post } from '@/lib/api';
 import { useAction } from '@/lib/hooks';
@@ -17,6 +17,7 @@ export function SchoolDetailPage() {
   const [sub, setSub] = useState<any>(null);
   const [overrides, setOverrides] = useState<Record<string, boolean>>({});
   const [paying, setPaying] = useState(false);
+  const [granting, setGranting] = useState(false);
   const [resetFor, setResetFor] = useState<any>(null);
   useEffect(() => {
     if (q.data) {
@@ -128,6 +129,18 @@ export function SchoolDetailPage() {
           </Card>
         </div>
         <div className="space-y-6">
+          <Card title="Message credits" subtitle="WhatsApp & SMS wallet" actions={<Button size="sm" variant="secondary" icon={<Coins className="size-4" />} onClick={() => setGranting(true)}>Add / deduct</Button>} padded={false}>
+            <p className="px-5 pt-4 text-3xl font-semibold tabular-nums">{num(s.credits)}</p>
+            <ul className="mt-3 max-h-64 divide-y divide-slate-100 overflow-y-auto border-t border-slate-100">
+              {s.creditLedger.map((t: any) => (
+                <li key={t.id} className="flex items-center justify-between gap-3 px-5 py-2 text-xs">
+                  <span className="min-w-0 truncate text-slate-600">{t.note ?? titleCase(t.kind)}</span>
+                  <span className={clsx('shrink-0 font-medium tabular-nums', t.delta > 0 ? 'text-emerald-600' : 'text-slate-700')}>{t.delta > 0 ? '+' : ''}{num(t.delta)}</span>
+                </li>
+              ))}
+              {!s.creditLedger.length && <li className="px-5 py-4 text-xs text-slate-400">No credit activity yet</li>}
+            </ul>
+          </Card>
           <Card title="School admins" padded={false}>
             <ul className="divide-y divide-slate-100">
               {s.admins.map((a: any) => (
@@ -156,6 +169,20 @@ export function SchoolDetailPage() {
           </Card>
         </div>
       </div>
+      <FormModal
+        open={granting}
+        onClose={() => setGranting(false)}
+        title="Add or deduct message credits"
+        description="Use after an offline payment (bank transfer, cheque) or as goodwill. Negative numbers deduct."
+        fields={[
+          { name: 'credits', label: 'Credits', type: 'number', required: true, span: 1, hint: 'e.g. 5000 or -200' },
+          { name: 'amountPaid', label: 'Amount received (₹)', type: 'number', span: 1, hint: 'Leave blank for a free grant' },
+          { name: 'note', label: 'Note', placeholder: 'NEFT ref, reason…' },
+        ]}
+        submit={(v) => post(`/platform/schools/${id}/credits`, { credits: Number(v.credits), amountPaid: v.amountPaid ? Number(v.amountPaid) : null, note: v.note || null })}
+        success="Credits updated"
+        invalidate={[['platform-school']]}
+      />
       <FormModal
         open={paying}
         onClose={() => setPaying(false)}

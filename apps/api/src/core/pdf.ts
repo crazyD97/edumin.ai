@@ -19,17 +19,20 @@ export interface SchoolHeader {
 
 export async function loadSchoolHeader(schoolId: string): Promise<SchoolHeader> {
   const [s] = await db.select({ name: schools.name, branding: schools.branding }).from(schools).where(eq(schools.id, schoolId));
-  let logo: Buffer | null = null;
-  const m = s.branding.logoUrl?.match(/\/files\/([0-9a-f-]{36})/);
-  if (m) {
-    const [f] = await db.select().from(files).where(eq(files.id, m[1]));
-    if (f && /png|jpe?g/.test(f.mimeType)) logo = await storage.get(f.storageKey).catch(() => null);
-  }
-  return { name: s.name, branding: s.branding, logo };
+  return { name: s.name, branding: s.branding, logo: await loadImage(s.branding.logoUrl) };
 }
 
-export function createDoc(opts: { landscape?: boolean } = {}) {
-  return new PDFDocument({ size: 'A4', margin: 40, layout: opts.landscape ? 'landscape' : 'portrait', bufferPages: true });
+/** Loads an uploaded image ('/api/files/<id>') for embedding; PDFKit only supports PNG and JPEG. */
+export async function loadImage(url?: string | null): Promise<Buffer | null> {
+  const m = url?.match(/\/files\/([0-9a-f-]{36})/);
+  if (!m) return null;
+  const [f] = await db.select().from(files).where(eq(files.id, m[1]));
+  if (!f || !/png|jpe?g/.test(f.mimeType)) return null;
+  return storage.get(f.storageKey).catch(() => null);
+}
+
+export function createDoc(opts: { landscape?: boolean; margin?: number } = {}) {
+  return new PDFDocument({ size: 'A4', margin: opts.margin ?? 40, layout: opts.landscape ? 'landscape' : 'portrait', bufferPages: true });
 }
 
 export function toBuffer(doc: Doc): Promise<Buffer> {

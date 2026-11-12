@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { keepPreviousData, useQuery } from '@tanstack/react-query';
-import { Plus, UserSquare2 } from 'lucide-react';
-import { apiPage, del, get, post, put } from '@/lib/api';
+import { IdCard, Plus, UserSquare2 } from 'lucide-react';
+import { apiPage, del, get, openPdf, post, put } from '@/lib/api';
 import { useAuth } from '@/lib/auth';
 import { useAction, useDebounced } from '@/lib/hooks';
 import { ago } from '@/lib/format';
@@ -10,8 +10,8 @@ import { DataTable, Toolbar } from '@/components/DataTable';
 import { FormModal } from '@/components/FormModal';
 
 export function StaffPage() {
-  const { can, user } = useAuth();
-  const [search, setSearch] = useState('');
+  const { can, user, hasFeature } = useAuth();
+  const [search, setSearch] = useState(() => new URLSearchParams(window.location.search).get('search') ?? '');
   const [roleKey, setRoleKey] = useState('');
   const [active, setActive] = useState('true');
   const [page, setPage] = useState(1);
@@ -29,11 +29,18 @@ export function StaffPage() {
         title="Staff"
         description="Teachers, administrators and other staff accounts."
         actions={
-          can('staff.create') && (
+          <>
+          {hasFeature('certificates') && can('certificates.view') && (
+            <Button variant="secondary" icon={<IdCard className="size-4" />} onClick={() => openPdf('/id-cards/staff')}>
+              Print ID cards
+            </Button>
+          )}
+          {can('staff.create') && (
             <Button icon={<Plus className="size-4" />} onClick={() => setEditing({ isActive: true })}>
               Add staff member
             </Button>
-          )
+          )}
+          </>
         }
       />
       <Card padded={false}>

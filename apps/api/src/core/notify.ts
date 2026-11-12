@@ -1,39 +1,80 @@
 /**
- * Notification fan-out: in-app notifications plus an email outbox.
- * Email delivery is decoupled — rows are queued and a driver drains them.
+ * Notification fan-out. Every notification is stored in-app (and pushed to the
+ * installed app); with `deliver`, it also goes out over the email/WhatsApp/SMS
+ * channels the school has enabled for that event.
  */
 import { and, eq, inArray, isNotNull, sql } from 'drizzle-orm';
+import type { MessageEvent } from '@edumin/shared';
 import type { Executor } from './db';
-import { db as rootDb } from './db';
-import { emailOutbox, enrollments, guardians, notifications, roles, sections, studentGuardians, students, users } from '../db/schema';
-import { env } from './env';
+import { enrollments, guardians, notifications, roles, sections, studentGuardians, students, users } from '../db/schema';
+import { pushToUsers } from './push';
+import { dispatch, familyRecipients, userRecipients, type AttachmentRef, type DispatchResult } from '../modules/messaging/service';
+
+type Vars = Record<string, string | number | null | undefined>;
 
 export interface NotifyInput {
   type: string;
   title: string;
   body?: string;
   link?: string;
-  email?: boolean;
+  /** Also send outside the app on this event's channels. */
+  deliver?: { event: MessageEvent; vars?: Vars };
+  createdBy?: string | null;
+}
+
+async function inApp(db: Executor, schoolId: string | null, ids: string[], input: NotifyInput) {
+  for (let i = 0; i < ids.length; i += 500) {
+    await db.insert(notifications).values(
+      ids.slice(i, i + 500).map((userId) => ({ schoolId, userId, type: input.type, title: input.title, body: input.body ?? null, link: input.link ?? null })),
+    );
+  }
+  pushToUsers(ids, { title: input.title, body: input.body ?? '', link: input.link ?? '/' }).catch(() => {});
 }
 
 export async function notifyUsers(db: Executor, schoolId: string | null, userIds: string[], input: NotifyInput) {
   const ids = [...new Set(userIds.filter(Boolean))];
   if (!ids.length) return 0;
-  for (let i = 0; i < ids.length; i += 500) {
-    const chunk = ids.slice(i, i + 500);
-    await db.insert(notifications).values(
-      chunk.map((userId) => ({ schoolId, userId, type: input.type, title: input.title, body: input.body ?? null, link: input.link ?? null })),
-    );
-    if (input.email) {
-      const recipients = await db.select({ email: users.email }).from(users).where(inArray(users.id, chunk));
-      if (recipients.length) {
-        await db.insert(emailOutbox).values(
-          recipients.map((r) => ({ schoolId, to: r.email, subject: input.title, body: `${input.body ?? ''}\n\n${input.link ? env.APP_URL + input.link : ''}` })),
-        );
-      }
-    }
+  await inApp(db, schoolId, ids, input);
+  if (input.deliver && schoolId) {
+    const recipients = await userRecipients(db, ids);
+    await dispatch(db, schoolId, {
+      event: input.deliver.event,
+      createdBy: input.createdBy,
+      items: recipients.map((r) => ({ recipient: r, vars: { name: r.name, ...input.deliver!.vars } })),
+    });
   }
   return ids.length;
+}
+
+/**
+ * Notifies the families of students: in-app to student and parent accounts, and
+ * out-of-app to each student's primary guardian (whether or not they have a login).
+ */
+export async function notifyFamilies(
+  db: Executor,
+  schoolId: string,
+  studentIds: string[],
+  input: Omit<NotifyInput, 'deliver'> & {
+    event: MessageEvent;
+    vars?: Vars | ((student: { id: string; name: string }) => Vars);
+    attachment?: (studentId: string) => AttachmentRef | null;
+    /** In-app recipients: parents, students, or both (default). */
+    who?: { students?: boolean; parents?: boolean };
+  },
+): Promise<DispatchResult | null> {
+  const unique = [...new Set(studentIds)];
+  if (!unique.length) return null;
+  await inApp(db, schoolId, await audience.forStudents(db, schoolId, unique, input.who ?? { students: true, parents: true }), input);
+  const families = await familyRecipients(db, schoolId, unique);
+  return dispatch(db, schoolId, {
+    event: input.event,
+    createdBy: input.createdBy,
+    items: [...families.entries()].map(([studentId, r]) => ({
+      recipient: r,
+      vars: { student: r.studentName, ...(typeof input.vars === 'function' ? input.vars({ id: studentId, name: r.studentName }) : input.vars) },
+      attachment: input.attachment?.(studentId) ?? null,
+    })),
+  });
 }
 
 /** User ids by audience — used by announcements, reminders and alerts. */
@@ -87,22 +128,3 @@ export const audience = {
   },
 };
 
-/** Email driver. `console` logs; `smtp` is the integration point for a real provider. */
-export async function drainEmailOutbox(limit = 50) {
-  if (env.EMAIL_DRIVER === 'none') return 0;
-  const queued = await rootDb.select().from(emailOutbox).where(eq(emailOutbox.status, 'queued')).limit(limit);
-  for (const mail of queued) {
-    try {
-      if (env.EMAIL_DRIVER === 'console' && env.NODE_ENV !== 'test') {
-        console.log(`[email] to=${mail.to} subject="${mail.subject}"`);
-      }
-      await rootDb.update(emailOutbox).set({ status: 'sent', sentAt: new Date(), attempts: mail.attempts + 1 }).where(eq(emailOutbox.id, mail.id));
-    } catch (err) {
-      await rootDb
-        .update(emailOutbox)
-        .set({ status: mail.attempts >= 4 ? 'failed' : 'queued', attempts: mail.attempts + 1, error: String(err) })
-        .where(eq(emailOutbox.id, mail.id));
-    }
-  }
-  return queued.length;
-}

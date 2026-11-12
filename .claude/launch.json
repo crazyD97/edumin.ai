@@ -2,6 +2,7 @@
   "version": "0.0.1",
   "configurations": [
     { "name": "api", "runtimeExecutable": "npm", "runtimeArgs": ["run", "dev", "-w", "@edumin/api"], "port": 4000 },
+    { "name": "prod-preview", "runtimeExecutable": "npx", "runtimeArgs": ["tsx", "--env-file-if-exists=.env", "apps/api/src/server.ts"], "env": { "PORT": "4100", "WEB_DIST": "apps/web/dist" }, "port": 4100 },
     { "name": "web", "runtimeExecutable": "npm", "runtimeArgs": ["run", "dev", "-w", "@edumin/web"], "port": 5173 }
   ]
 }
